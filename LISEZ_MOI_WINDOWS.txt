@@ -1,0 +1,33 @@
+=============================================================================
+GUIDE D'UTILISATION SUR WINDOWS - APPLICATION TIC-TiG (CEMINACE BRAZZAVILLE)
+=============================================================================
+
+Ce dossier contient les DEUX versions complètes de l'application :
+
+-----------------------------------------------------------------------------
+1. POUR AVOIR LE RENDU EXACT DE LA PREVIEW DANS VOTRE NAVIGATEUR (Recommandé) :
+-----------------------------------------------------------------------------
+L'interface affichée dans la page Preview est une application Web moderne
+(React + TypeScript + Tailwind CSS).
+
+Pour la lancer en local sur votre ordinateur Windows :
+  1. Si ce n'est pas encore fait, installez Node.js (gratuit) :
+     https://nodejs.org (choisir la version "LTS").
+  2. Double-cliquez simplement sur le fichier :
+     👉 LANCER_APPLICATION_WEB.bat
+  3. Le script va installer automatiquement les composants et ouvrir votre
+     navigateur web (Chrome ou Edge) sur http://localhost:3000 avec TOUS les
+     boutons, les 5 onglets, le barème CEMINACE, la synthèse et l'export PDF.
+
+-----------------------------------------------------------------------------
+2. POUR LANCER LA VERSION DESKTOP PYTHON (980 x 683 px) :
+-----------------------------------------------------------------------------
+Si vous préférez exécuter l'application bureau autonome en Python :
+  1. Installez Python 3 depuis https://www.python.org/ (en cochant "Add to PATH").
+  2. Double-cliquez sur :
+     👉 LANCER_APPLICATION_PYTHON.bat
+     (ou ouvrez une invite de commande et tapez : python tic_tig.py)
+  3. L'application s'ouvre dans une fenêtre 980x683 pixels avec le thème
+     Bleu Nuit Clair, le filigrane de l'école, les 5 onglets, le bouton de
+     bascule de trimestre et les 4 notes CEMINACE.
+=============================================================================

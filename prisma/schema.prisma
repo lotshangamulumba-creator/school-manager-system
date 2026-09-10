@@ -1,0 +1,206 @@
+// Schéma Prisma pour TIC-TiG - Plateforme de Gestion Scolaire
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  DIRECTOR
+  SECRETARY
+  TEACHER
+  PARENT
+  STUDENT
+}
+
+enum Gender {
+  M
+  F
+}
+
+enum SchoolLevel {
+  PRIMAIRE
+  COLLEGE
+  LYCEE
+}
+
+enum TermName {
+  TRIMESTRE_1
+  TRIMESTRE_2
+  TRIMESTRE_3
+}
+
+enum Specialty {
+  Sciences
+  Litterature
+  EPS
+  Autre
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  nom          String
+  prenom       String
+  telephone    String?
+  role         Role      @default(TEACHER)
+  actif        Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  teacher      Teacher?
+  auditLogs    AuditLog[]
+
+  @@map("users")
+}
+
+model AcademicYear {
+  id        String    @id @default(uuid())
+  name      String    @unique // ex: "2025-2026"
+  startDate DateTime
+  endDate   DateTime
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+
+  classes   Class[]
+  grades    Grade[]
+
+  @@map("academic_years")
+}
+
+model Teacher {
+  id         String    @id @default(uuid())
+  userId     String?   @unique
+  nom        String
+  prenom     String
+  email      String    @unique
+  telephone  String?
+  specialite String?
+  statut     Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+
+  user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  classes    Class[]   @relation("ClassHeadTeacher")
+  grades     Grade[]
+
+  @@map("teachers")
+}
+
+model Class {
+  id              String       @id @default(uuid())
+  nom             String       // ex: "6ème A", "Terminale C"
+  niveau          SchoolLevel
+  section         String?      // ex: "Scientifique", "Littéraire"
+  capacite        Int          @default(45)
+  statut          Boolean      @default(true)
+  academicYearId  String
+  headTeacherId   String?
+  createdAt       DateTime     @default(now())
+
+  academicYear    AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  headTeacher     Teacher?     @relation("ClassHeadTeacher", fields: [headTeacherId], references: [id], onDelete: SetNull)
+  students        Student[]
+  grades          Grade[]
+  subjects        ClassSubject[]
+
+  @@unique([nom, academicYearId])
+  @@map("classes")
+}
+
+model Subject {
+  id           String        @id @default(uuid())
+  nom          String        // ex: "Mathématiques"
+  code         String        @unique // ex: "MATH"
+  niveau       SchoolLevel
+  specialty    Specialty     @default(Sciences)
+  statut       Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+
+  classes      ClassSubject[]
+  grades       Grade[]
+
+  @@map("subjects")
+}
+
+model ClassSubject {
+  id         String   @id @default(uuid())
+  classId    String
+  subjectId  String
+  coeff      Float    @default(2.0)
+
+  class      Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject    Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, subjectId])
+  @@map("class_subjects")
+}
+
+model Student {
+  id             String       @id @default(uuid())
+  matricule      String       @unique // ex: "CEM-001"
+  nom            String
+  prenom         String
+  sexe           Gender       @default(M)
+  dateNaissance  String       // format "DD/MM/YYYY" ou ISO
+  lieuNaissance  String?
+  adresse        String?
+  telephone      String?
+  email          String?
+  photoUrl       String?
+  statut         Boolean      @default(true)
+  classId        String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  currentClass   Class        @relation(fields: [classId], references: [id], onDelete: Restrict)
+  grades         Grade[]
+
+  @@map("students")
+}
+
+model Grade {
+  id             String       @id @default(uuid())
+  studentId      String
+  subjectId      String
+  classId        String
+  teacherId      String?
+  academicYearId String
+  term           TermName     // TRIMESTRE_1, TRIMESTRE_2, TRIMESTRE_3
+
+  // Barème officiel CEMINACE Congo-Brazzaville
+  evaluations    Float        @default(0) // Interrogations & contrôles continus (/20)
+  dev1           Float        @default(0) // Devoir sur table surveillé 1 (/20)
+  dev2           Float        @default(0) // Devoir sur table surveillé 2 (/20)
+  composition    Float        @default(0) // Composition trimestrielle (Compte double - coeff 2) (/20)
+  
+  observation    String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  student        Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject        Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  class          Class        @relation(fields: [classId], references: [id], onDelete: Cascade)
+  teacher        Teacher?     @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, subjectId, term, academicYearId])
+  @@map("grades")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String   // "LOGIN", "CREATE_STUDENT", "UPDATE_GRADE", "IMPORT_EXCEL", "EXPORT_REPORT"
+  details   String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+}

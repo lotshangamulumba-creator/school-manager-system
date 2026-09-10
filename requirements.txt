@@ -1,0 +1,8 @@
+# Dépendances requises pour l'application TIC-TiG (CEMINACE Congo Brazzaville)
+# Exécuter : pip install -r requirements.txt
+# Lancer l'application : python tic_tig.py
+
+pandas>=2.0.0
+openpyxl>=3.1.0
+python-docx>=1.1.0
+reportlab>=4.0.0
