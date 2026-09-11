@@ -1,6 +1,8 @@
+import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 
 export interface DbUser {
   id: string;
@@ -164,6 +166,7 @@ class DatabaseEngine {
       fs.renameSync(tmpFile, DB_FILE);
     } catch (err) {
       console.error('Failed to write database file:', err);
+      throw new Error('Impossible de persister la base de données.');
     }
   }
 
@@ -194,8 +197,18 @@ class DatabaseEngine {
 
   private generateSeedData(): SchoolDatabase {
     const now = new Date().toISOString();
-    const adminHash = bcrypt.hashSync('admin1234', 10);
-    const teacherHash = bcrypt.hashSync('prof1234', 10);
+    const adminPassword = process.env.SEED_ADMIN_PASSWORD || crypto.randomBytes(24).toString('base64url');
+    const teacherPassword = process.env.SEED_TEACHER_PASSWORD || crypto.randomBytes(24).toString('base64url');
+    if (process.env.NODE_ENV === 'production' && (!process.env.SEED_ADMIN_PASSWORD || !process.env.SEED_TEACHER_PASSWORD)) {
+      throw new Error('SEED_ADMIN_PASSWORD et SEED_TEACHER_PASSWORD doivent être définis pour initialiser la base en production.');
+    }
+    if (process.env.NODE_ENV !== 'production' && (!process.env.SEED_ADMIN_PASSWORD || !process.env.SEED_TEACHER_PASSWORD)) {
+      console.warn('[TIC-TiG] Base initialisée avec des mots de passe de développement générés. Définissez SEED_ADMIN_PASSWORD et SEED_TEACHER_PASSWORD pour les contrôler.');
+      console.warn(`[TIC-TiG] Compte admin: ${adminPassword}`);
+      console.warn(`[TIC-TiG] Compte enseignant: ${teacherPassword}`);
+    }
+    const adminHash = bcrypt.hashSync(adminPassword, 12);
+    const teacherHash = bcrypt.hashSync(teacherPassword, 12);
 
     const users: DbUser[] = [
       {

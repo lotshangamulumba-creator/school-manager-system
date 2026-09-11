@@ -64,6 +64,7 @@ export interface ApiGrade {
   subjectName: string;
   classId: string;
   className: string;
+  teacherId?: string;
   term: '1er Trimestre' | '2ème Trimestre' | '3ème Trimestre';
   evaluations: number;
   dev1: number;
@@ -132,62 +133,15 @@ class ApiService {
 
   // --- Auth ---
   async login(email: string, password: string): Promise<{ token: string; user: UserProfile }> {
-    try {
-      const res = await this.request<{ token: string; user: UserProfile }>('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ email, password }),
-      });
-      this.setToken(res.token);
-      return res;
-    } catch (err: any) {
-      // Si le serveur backend Express n'est pas démarré (ex: mode Vite client-only ou port différent),
-      // basculer intelligemment sur les comptes d'administration locaux pour permettre l'accès instantané.
-      const trimmedEmail = email.toLowerCase().trim();
-      if (
-        trimmedEmail === 'admin@ceminace.cg' ||
-        trimmedEmail === 'prof.math@ceminace.cg' ||
-        trimmedEmail === 'direction@ceminace.cg'
-      ) {
-        const isMatch =
-          (trimmedEmail === 'admin@ceminace.cg' && password === 'admin1234') ||
-          (trimmedEmail === 'prof.math@ceminace.cg' && password === 'prof1234') ||
-          (trimmedEmail === 'direction@ceminace.cg' && password === 'direct1234');
-
-        if (!isMatch) {
-          throw new Error('Mot de passe incorrect.');
-        }
-
-        const role: UserProfile['role'] = trimmedEmail === 'admin@ceminace.cg' ? 'ADMIN' : trimmedEmail === 'direction@ceminace.cg' ? 'DIRECTOR' : 'TEACHER';
-        const user: UserProfile = {
-          id: trimmedEmail === 'admin@ceminace.cg' ? 'usr-admin-01' : trimmedEmail === 'direction@ceminace.cg' ? 'usr-dir-01' : 'usr-prof-01',
-          email: trimmedEmail,
-          nom: trimmedEmail === 'admin@ceminace.cg' ? 'NGOUABI' : trimmedEmail === 'direction@ceminace.cg' ? 'LOUBOUAKI' : 'MOUZITA',
-          prenom: trimmedEmail === 'admin@ceminace.cg' ? 'Alphonse' : trimmedEmail === 'direction@ceminace.cg' ? 'Chantal' : 'Christian',
-          role,
-          telephone: '+242 06 654 32 10',
-        };
-        const token = `local-standalone-${user.id}`;
-        this.setToken(token);
-        return { token, user };
-      }
-      throw err;
-    }
+    const res = await this.request<{ token: string; user: UserProfile }>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+    this.setToken(res.token);
+    return res;
   }
 
   async getMe(): Promise<UserProfile> {
-    if (this.token && this.token.startsWith('local-standalone-')) {
-      const isAdmin = this.token.includes('usr-admin');
-      const isDir = this.token.includes('usr-dir');
-      const role: UserProfile['role'] = isAdmin ? 'ADMIN' : isDir ? 'DIRECTOR' : 'TEACHER';
-      return {
-        id: isAdmin ? 'usr-admin-01' : isDir ? 'usr-dir-01' : 'usr-prof-01',
-        email: isAdmin ? 'admin@ceminace.cg' : isDir ? 'direction@ceminace.cg' : 'prof.math@ceminace.cg',
-        nom: isAdmin ? 'NGOUABI' : isDir ? 'LOUBOUAKI' : 'MOUZITA',
-        prenom: isAdmin ? 'Alphonse' : isDir ? 'Chantal' : 'Christian',
-        role,
-        telephone: '+242 06 654 32 10',
-      };
-    }
     return this.request<UserProfile>('/auth/me');
   }
 
@@ -225,10 +179,10 @@ class ApiService {
     });
   }
 
-  async batchImportStudents(students: any[], targetClass: string): Promise<{ importedCount: number; total: number }> {
+  async batchImportStudents(students: any[], targetClassId: string, targetClassName: string): Promise<{ importedCount: number; total: number }> {
     return this.request<{ importedCount: number; total: number }>('/students/batch-import', {
       method: 'POST',
-      body: JSON.stringify({ students, targetClass }),
+      body: JSON.stringify({ students, targetClassId, targetClassName }),
     });
   }
 

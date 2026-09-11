@@ -78,6 +78,7 @@ export default function App() {
   // Configuration académique CEMINACE
   const [level, setLevel] = useState<SchoolLevel>('Collège');
   const [classes, setClasses] = useState<string[]>(CEMINACE_LEVELS['Collège'].classes);
+  const [classIds, setClassIds] = useState<Record<string, string>>({});
   const [currentClass, setCurrentClass] = useState<string>(CEMINACE_LEVELS['Collège'].classes[0]);
   const [trimester, setTrimester] = useState<string>('1er Trimestre');
 
@@ -141,6 +142,7 @@ export default function App() {
             lieuNaissance: bs.lieuNaissance || 'Brazzaville',
             telephoneParent: bs.parentPhone || '',
             className: bs.className || '6ème A',
+            classId: bs.classId,
           }))
         );
       }
@@ -148,11 +150,13 @@ export default function App() {
       if (backendClasses.length > 0) {
         const classNames = backendClasses.map((c) => c.nom);
         setClasses(classNames);
+        setClassIds(Object.fromEntries(backendClasses.map((c) => [c.nom, c.id])));
       }
 
       if (backendSubjects.length > 0) {
         setSubjects(
           backendSubjects.map((s) => ({
+            id: s.id,
             name: s.nom,
             coeff: s.coeff,
             specialty: s.specialty || 'Sciences',
@@ -298,6 +302,11 @@ export default function App() {
 
   // Sauvegarde d'un élève (Ajout ou Modification)
   const handleSaveStudent = (savedStudent: Student) => {
+    const targetClassId = savedStudent.classId || classIds[savedStudent.className];
+    if (!targetClassId) {
+      console.error('[TIC-TiG] Classe sans ID réel, enregistrement refusé.');
+      return;
+    }
     if (studentToEdit) {
       setStudents((prev) => prev.map((s) => (s.id === savedStudent.id ? savedStudent : s)));
       api.updateStudent(savedStudent.id, {
@@ -306,6 +315,7 @@ export default function App() {
         sexe: savedStudent.sexe,
         dateNaissance: savedStudent.dateNaissance,
         parentPhone: savedStudent.telephoneParent,
+        classId: targetClassId,
         className: savedStudent.className,
       }).catch(console.error);
     } else {
@@ -317,28 +327,10 @@ export default function App() {
         sexe: savedStudent.sexe,
         dateNaissance: savedStudent.dateNaissance,
         parentPhone: savedStudent.telephoneParent,
+        classId: targetClassId,
         className: savedStudent.className,
       }).catch(console.error);
 
-      // Initialiser ses notes par défaut pour les 3 trimestres
-      const newGrades = { ...grades };
-      const trimesters = ['1er Trimestre', '2ème Trimestre', '3ème Trimestre'];
-      subjects.forEach((sub) => {
-        const defaultG: StudentGrades = {
-          evaluations: 10,
-          dev1: 10,
-          dev2: 10,
-          composition: 10,
-          eval1: 10,
-          eval2: 10,
-          dev3: 10,
-        };
-        newGrades[`${savedStudent.id}_${sub.name}`] = defaultG;
-        trimesters.forEach((trim) => {
-          newGrades[`${savedStudent.id}_${sub.name}_${trim}`] = defaultG;
-        });
-      });
-      setGrades(newGrades);
     }
     setStudentToEdit(null);
   };
@@ -357,29 +349,15 @@ export default function App() {
 
   // Import d'élèves depuis Excel ou Word
   const handleImportStudents = (imported: Student[]) => {
-    setStudents((prev) => [...prev, ...imported]);
-    api.batchImportStudents(imported, currentClass).catch(console.error);
+    const targetClassId = classIds[currentClass];
+    if (!targetClassId) {
+      console.error('[TIC-TiG] Import refusé: classe sans ID réel.');
+      return;
+    }
+    const importedWithClass = imported.map((student) => ({ ...student, classId: targetClassId }));
+    setStudents((prev) => [...prev, ...importedWithClass]);
+    api.batchImportStudents(importedWithClass, targetClassId, currentClass).catch(console.error);
 
-    const updatedGrades = { ...grades };
-    const trimesters = ['1er Trimestre', '2ème Trimestre', '3ème Trimestre'];
-    imported.forEach((s) => {
-      subjects.forEach((sub) => {
-        const defaultG: StudentGrades = {
-          evaluations: 10,
-          dev1: 10,
-          dev2: 10,
-          composition: 10,
-          eval1: 10,
-          eval2: 10,
-          dev3: 10,
-        };
-        updatedGrades[`${s.id}_${sub.name}`] = defaultG;
-        trimesters.forEach((trim) => {
-          updatedGrades[`${s.id}_${sub.name}_${trim}`] = defaultG;
-        });
-      });
-    });
-    setGrades(updatedGrades);
   };
 
   // Sauvegarde des notes saisies pour un élève individuel
@@ -394,20 +372,26 @@ export default function App() {
     }));
 
     // Sauvegarde en base de données sur le serveur
+    const subject = subjects.find((candidate) => candidate.name === gradeEditModalData.subjectName);
+    const classId = classIds[currentClass];
+    if (!subject?.id || !classId) {
+      console.error('[TIC-TiG] Note refusée: référence classe/matière sans ID réel.');
+      return;
+    }
     api.saveBatchGrades({
       grades: [
         {
           studentId: gradeEditModalData.student.id,
-          subjectId: gradeEditModalData.subjectName,
+          subjectId: subject.id,
           subjectName: gradeEditModalData.subjectName,
-          evaluations: updatedGrades.evaluations ?? updatedGrades.eval1 ?? 10,
-          dev1: updatedGrades.dev1 ?? 10,
-          dev2: updatedGrades.dev2 ?? 10,
-          composition: updatedGrades.composition ?? 10,
+          evaluations: updatedGrades.evaluations ?? updatedGrades.eval1 ?? 0,
+          dev1: updatedGrades.dev1 ?? 0,
+          dev2: updatedGrades.dev2 ?? 0,
+          composition: updatedGrades.composition ?? 0,
           observation: updatedGrades.observation,
         },
       ],
-      classId: currentClass,
+      classId,
       className: currentClass,
       term: trimester,
     }).catch(console.error);
@@ -422,6 +406,11 @@ export default function App() {
 
     // Transformer le lot pour l'API REST
     const gradeList: any[] = [];
+    const classId = classIds[currentClass];
+    if (!classId) {
+      console.error('[TIC-TiG] Notes refusées: classe sans ID réel.');
+      return;
+    }
     currentClassStudents.forEach((student) => {
       subjects.forEach((subj) => {
         const key = `${student.id}_${subj.name}_${trimester}`;
@@ -430,12 +419,12 @@ export default function App() {
         if (g) {
           gradeList.push({
             studentId: student.id,
-            subjectId: subj.name,
+            subjectId: subj.id,
             subjectName: subj.name,
-            evaluations: g.evaluations ?? g.eval1 ?? 10,
-            dev1: g.dev1 ?? 10,
-            dev2: g.dev2 ?? 10,
-            composition: g.composition ?? 10,
+            evaluations: g.evaluations ?? g.eval1 ?? 0,
+            dev1: g.dev1 ?? 0,
+            dev2: g.dev2 ?? 0,
+            composition: g.composition ?? 0,
             observation: g.observation,
           });
         }
@@ -445,7 +434,7 @@ export default function App() {
     if (gradeList.length > 0) {
       api.saveBatchGrades({
         grades: gradeList,
-        classId: currentClass,
+        classId,
         className: currentClass,
         term: trimester,
       }).catch(console.error);
@@ -1027,20 +1016,11 @@ export default function App() {
                       currentClassStudents.map((student) => {
                         const keyWithTrim = `${student.id}_${selectedSubjectForGrade}_${trimester}`;
                         const keyDefault = `${student.id}_${selectedSubjectForGrade}`;
-                        const g = grades[keyWithTrim] || grades[keyDefault] || {
-                          evaluations: 10,
-                          dev1: 10,
-                          dev2: 10,
-                          composition: 10,
-                          eval1: 10,
-                          eval2: 10,
-                          dev3: 10,
-                        };
-
-                        const evalNotes = g.evaluations ?? g.eval1 ?? 10;
-                        const dev1 = g.dev1 ?? 10;
-                        const dev2 = g.dev2 ?? 10;
-                        const comp = g.composition ?? g.dev3 ?? 10;
+                        const g = grades[keyWithTrim] || grades[keyDefault];
+                        const evalNotes = g?.evaluations ?? g?.eval1 ?? 0;
+                        const dev1 = g?.dev1 ?? 0;
+                        const dev2 = g?.dev2 ?? 0;
+                        const comp = g?.composition ?? g?.dev3 ?? 0;
                         const cc = (evalNotes + dev1 + dev2) / 3;
                         const subjectAvg = (cc + 2 * comp) / 3;
 
@@ -1051,7 +1031,7 @@ export default function App() {
                               {student.lastName.toUpperCase()} {student.firstName}
                             </td>
                             <td className="py-2 px-2.5 text-center font-mono font-medium text-slate-800 bg-slate-50/50">
-                              {evalNotes.toFixed(2)}
+                              {g ? evalNotes.toFixed(2) : '—'}
                             </td>
                             <td className="py-2 px-2.5 text-center font-mono font-medium text-slate-800">
                               {dev1.toFixed(2)}
@@ -1435,7 +1415,7 @@ export default function App() {
         onClose={() => setGradeEditModalData(null)}
         student={gradeEditModalData?.student || null}
         subjectName={gradeEditModalData?.subjectName || ''}
-        initialGrades={gradeEditModalData?.grades || { eval1: 10, eval2: 10, dev1: 10, dev2: 10, dev3: 10 }}
+        initialGrades={gradeEditModalData?.grades || {}}
         onSave={handleSaveGrades}
       />
 
@@ -1445,11 +1425,12 @@ export default function App() {
         onClose={() => setIsBatchGradeModalOpen(false)}
         students={currentClassStudents}
         subjects={subjects}
-        grades={grades}
         currentClass={currentClass}
-        level={level}
+        selectedSubject={subjects.find((subject) => subject.name === selectedSubjectForGrade) || subjects[0] || null}
+        onSelectSubject={(subject) => setSelectedSubjectForGrade(subject.name)}
+        gradesMap={grades}
         trimester={trimester}
-        onSaveBatchGrades={handleSaveBatchGrades}
+        onSaveBatch={handleSaveBatchGrades}
       />
 
       {/* Modals d'Administration Full-Stack */}

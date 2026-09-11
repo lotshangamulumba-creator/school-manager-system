@@ -9,7 +9,7 @@ interface GradeEditModalProps {
   student: Student | null;
   subjectName: string;
   trimester?: string;
-  initialGrades: StudentGrades;
+  initialGrades: Partial<StudentGrades>;
   onSave: (grades: StudentGrades) => void;
 }
 
@@ -23,19 +23,19 @@ export const GradeEditModal: React.FC<GradeEditModalProps> = ({
   onSave,
 }) => {
   const [evaluations, setEvaluations] = useState(
-    (initialGrades.evaluations ?? initialGrades.eval1 ?? 10).toString()
+    (initialGrades.evaluations ?? initialGrades.eval1 ?? '').toString()
   );
-  const [dev1, setDev1] = useState((initialGrades.dev1 ?? 10).toString());
-  const [dev2, setDev2] = useState((initialGrades.dev2 ?? 10).toString());
+  const [dev1, setDev1] = useState((initialGrades.dev1 ?? '').toString());
+  const [dev2, setDev2] = useState((initialGrades.dev2 ?? '').toString());
   const [composition, setComposition] = useState(
-    (initialGrades.composition ?? initialGrades.dev3 ?? 10).toString()
+    (initialGrades.composition ?? initialGrades.dev3 ?? '').toString()
   );
 
   useEffect(() => {
-    setEvaluations((initialGrades.evaluations ?? initialGrades.eval1 ?? 10).toString());
-    setDev1((initialGrades.dev1 ?? 10).toString());
-    setDev2((initialGrades.dev2 ?? 10).toString());
-    setComposition((initialGrades.composition ?? initialGrades.dev3 ?? 10).toString());
+    setEvaluations((initialGrades.evaluations ?? initialGrades.eval1 ?? '').toString());
+    setDev1((initialGrades.dev1 ?? '').toString());
+    setDev2((initialGrades.dev2 ?? '').toString());
+    setComposition((initialGrades.composition ?? initialGrades.dev3 ?? '').toString());
   }, [initialGrades, isOpen]);
 
   if (!isOpen || !student) return null;

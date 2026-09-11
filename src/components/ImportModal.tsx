@@ -70,6 +70,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
             results.push({
               id: `CEM-IMP-${Date.now().toString().slice(-3)}${i}`,
+              matricule: `CEM-IMP-${Date.now().toString().slice(-3)}${i}`,
               lastName,
               firstName,
               dob,
@@ -109,6 +110,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
               results.push({
                 id: `CEM-DOC-${i + 1}`,
+                matricule: `CEM-DOC-${i + 1}`,
                 lastName: ln,
                 firstName: fn,
                 dob,
@@ -130,9 +132,9 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   };
 
   const createFallbackImport = (cName: string): Student[] => [
-    { id: 'CEM-IMP-01', firstName: 'Jean-Luc', lastName: 'Massamba', dob: '14/03/2010', gender: 'M', parentPhone: '+242 06 411 22 33', className: cName },
-    { id: 'CEM-IMP-02', firstName: 'Christelle', lastName: 'Bantsimba', dob: '28/07/2010', gender: 'F', parentPhone: '+242 05 522 33 44', className: cName },
-    { id: 'CEM-IMP-03', firstName: 'Destin', lastName: 'Kibamba', dob: '05/11/2009', gender: 'M', parentPhone: '+242 06 633 44 55', className: cName },
+    { id: 'CEM-IMP-01', matricule: 'CEM-IMP-01', firstName: 'Jean-Luc', lastName: 'Massamba', dob: '14/03/2010', gender: 'M', parentPhone: '+242 06 411 22 33', className: cName },
+    { id: 'CEM-IMP-02', matricule: 'CEM-IMP-02', firstName: 'Christelle', lastName: 'Bantsimba', dob: '28/07/2010', gender: 'F', parentPhone: '+242 05 522 33 44', className: cName },
+    { id: 'CEM-IMP-03', matricule: 'CEM-IMP-03', firstName: 'Destin', lastName: 'Kibamba', dob: '05/11/2009', gender: 'M', parentPhone: '+242 06 633 44 55', className: cName },
   ];
 
   const handleEditRecord = (index: number, field: keyof Student, value: string) => {

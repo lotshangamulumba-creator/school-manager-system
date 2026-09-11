@@ -44,26 +44,18 @@ export const BatchGradeModal: React.FC<BatchGradeModalProps> = ({
     classStudents.forEach((student) => {
       const g =
         gradesMap[`${student.id}_${selectedSubject.name}_${trimester}`] ||
-        gradesMap[`${student.id}_${selectedSubject.name}`] || {
-          evaluations: 10,
-          dev1: 10,
-          dev2: 10,
-          composition: 10,
-          eval1: 10,
-          eval2: 10,
-          dev3: 10,
-        };
+        gradesMap[`${student.id}_${selectedSubject.name}`];
 
-      const evalVal = g.evaluations ?? g.eval1 ?? 10;
-      const d1Val = g.dev1 ?? 10;
-      const d2Val = g.dev2 ?? 10;
-      const compVal = g.composition ?? g.dev3 ?? 10;
+      const evalVal = g?.evaluations ?? g?.eval1;
+      const d1Val = g?.dev1;
+      const d2Val = g?.dev2;
+      const compVal = g?.composition ?? g?.dev3;
 
       initial[student.id] = {
-        evalNote: evalVal.toString(),
-        dev1: d1Val.toString(),
-        dev2: d2Val.toString(),
-        comp: compVal.toString(),
+        evalNote: evalVal === undefined ? '' : evalVal.toString(),
+        dev1: d1Val === undefined ? '' : d1Val.toString(),
+        dev2: d2Val === undefined ? '' : d2Val.toString(),
+        comp: compVal === undefined ? '' : compVal.toString(),
       };
     });
 
@@ -158,15 +150,15 @@ export const BatchGradeModal: React.FC<BatchGradeModalProps> = ({
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold text-slate-700">Matière sélectionnée :</span>
             <select
-              value={selectedSubject.name}
+              value={selectedSubject.id}
               onChange={(e) => {
-                const sub = subjects.find((s) => s.name === e.target.value);
+                const sub = subjects.find((s) => s.id === e.target.value);
                 if (sub) onSelectSubject(sub);
               }}
               className="bg-white border border-slate-300 text-xs font-bold text-[#1E3A5F] rounded-lg px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-[#1E3A5F]"
             >
               {subjects.map((sub) => (
-                <option key={sub.name} value={sub.name}>
+                <option key={sub.id} value={sub.id}>
                   {sub.name} ({sub.specialty} • Coeff {sub.coeff})
                 </option>
               ))}

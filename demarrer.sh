@@ -24,8 +24,7 @@ echo "     Ouvrez votre navigateur web à l'adresse : http://localhost:3000"
 echo "===================================================================="
 echo ""
 echo "Identifiants de connexion :"
-echo "  - Administrateur : admin@ceminace.cg    / admin1234"
-echo "  - Enseignant     : prof.math@ceminace.cg / prof1234"
+echo "  - Les mots de passe sont définis dans le fichier .env"
 echo ""
 
 if command -v xdg-open &> /dev/null; then

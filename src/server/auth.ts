@@ -1,9 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { db, DbUser } from './db.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'ceminace-brazzaville-secure-token-secret-2026';
+const JWT_SECRET = process.env.JWT_SECRET || (
+  process.env.NODE_ENV === 'production'
+    ? (() => { throw new Error('JWT_SECRET doit être défini en production.'); })()
+    : crypto.randomBytes(32).toString('hex')
+);
 const TOKEN_EXPIRY = '24h';
 
 export interface AuthenticatedRequest extends Request {
@@ -38,8 +43,21 @@ export function authMiddleware(req: AuthenticatedRequest, res: Response, next: N
 
   const token = authHeader.split(' ')[1];
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
-    req.user = decoded;
+    const decoded = jwt.verify(token, JWT_SECRET) as jwt.JwtPayload;
+    if (typeof decoded.id !== 'string') {
+      return res.status(401).json({ error: 'Jeton invalide.' });
+    }
+    const user = db.getData().users.find(candidate => candidate.id === decoded.id);
+    if (!user || !user.actif || (decoded.role && decoded.role !== user.role)) {
+      return res.status(401).json({ error: 'Utilisateur inactif ou rôle modifié. Veuillez vous reconnecter.' });
+    }
+    req.user = {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      nom: user.nom,
+      prenom: user.prenom
+    };
     next();
   } catch (err) {
     return res.status(401).json({ error: 'Session expirée ou invalide. Veuillez vous reconnecter.' });

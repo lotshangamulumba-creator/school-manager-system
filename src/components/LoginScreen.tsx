@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LogIn, School, ShieldCheck, UserCheck, AlertCircle, KeyRound, Mail, Sparkles, CheckCircle2 } from 'lucide-react';
+import { LogIn, School, AlertCircle, KeyRound, Mail, CheckCircle2 } from 'lucide-react';
 import { api, UserProfile } from '../services/api';
 
 interface LoginScreenProps {
@@ -29,12 +29,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const fillDemo = (demoEmail: string, demoPass: string) => {
-    setEmail(demoEmail);
-    setPassword(demoPass);
-    setError(null);
   };
 
   return (
@@ -115,46 +109,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             )}
           </button>
         </form>
-
-        {/* Comptes de démonstration préconfigurés */}
-        <div className="mt-6 pt-5 border-t border-slate-800">
-          <div className="flex items-center gap-1.5 text-xs text-slate-400 font-semibold mb-2.5">
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>Comptes de test préconfigurés :</span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => fillDemo('admin@ceminace.cg', 'admin1234')}
-              className="p-2.5 text-left rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 hover:border-sky-500/50 transition-all cursor-pointer group"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-sky-400 flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5" /> Administrateur
-                </span>
-                <span className="text-[10px] text-slate-400 group-hover:text-white">Cliquer</span>
-              </div>
-              <p className="text-[11px] text-slate-300 font-mono mt-0.5 truncate">admin@ceminace.cg</p>
-              <p className="text-[10px] text-slate-400">Passe : admin1234</p>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => fillDemo('prof.math@ceminace.cg', 'prof1234')}
-              className="p-2.5 text-left rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 hover:border-indigo-500/50 transition-all cursor-pointer group"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-indigo-400 flex items-center gap-1">
-                  <UserCheck className="w-3.5 h-3.5" /> Enseignant
-                </span>
-                <span className="text-[10px] text-slate-400 group-hover:text-white">Cliquer</span>
-              </div>
-              <p className="text-[11px] text-slate-300 font-mono mt-0.5 truncate">prof.math@ceminace.cg</p>
-              <p className="text-[10px] text-slate-400">Passe : prof1234</p>
-            </button>
-          </div>
-        </div>
 
         {/* Footer Security Badges */}
         <div className="mt-6 flex items-center justify-between text-[10px] text-slate-400">

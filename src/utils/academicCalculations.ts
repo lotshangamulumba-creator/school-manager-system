@@ -45,26 +45,23 @@ export function calculateClassAverages(
       const g =
         gradesMap[`${student.id}_${sub.name}_${trimester}`] ||
         gradesMap[`${student.id}_${sub.name}`] || {
-          evaluations: 10,
-          dev1: 10,
-          dev2: 10,
-          composition: 10,
-          eval1: 10,
-          eval2: 10,
-          dev3: 10,
+          evaluations: 0,
+          dev1: 0,
+          dev2: 0,
+          composition: 0,
         };
 
       const evalAvg =
         g.evaluations !== undefined
           ? g.evaluations
-          : Number((((g.eval1 ?? 10) + (g.eval2 ?? 10)) / 2).toFixed(2));
+          : Number((((g.eval1 ?? 0) + (g.eval2 ?? 0)) / 2).toFixed(2));
 
-      const d1 = g.dev1 !== undefined ? g.dev1 : 10;
-      const d2 = g.dev2 !== undefined ? g.dev2 : 10;
+      const d1 = g.dev1 !== undefined ? g.dev1 : 0;
+      const d2 = g.dev2 !== undefined ? g.dev2 : 0;
       const devAvg = Number(((d1 + d2) / 2).toFixed(2));
 
       const comp =
-        g.composition !== undefined ? g.composition : g.dev3 !== undefined ? g.dev3 : 10;
+        g.composition !== undefined ? g.composition : g.dev3 !== undefined ? g.dev3 : 0;
 
       // Formule Officielle CEMINACE (Congo Brazzaville) :
       // - Contrôle Continu (CC) = (Note Évaluations + Devoir 1 + Devoir 2) / 3
