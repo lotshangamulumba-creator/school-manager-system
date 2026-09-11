@@ -331,25 +331,6 @@ export default function App() {
         className: savedStudent.className,
       }).catch(console.error);
 
-      // Initialiser ses notes par défaut pour les 3 trimestres
-      const newGrades = { ...grades };
-      const trimesters = ['1er Trimestre', '2ème Trimestre', '3ème Trimestre'];
-      subjects.forEach((sub) => {
-        const defaultG: StudentGrades = {
-          evaluations: 10,
-          dev1: 10,
-          dev2: 10,
-          composition: 10,
-          eval1: 10,
-          eval2: 10,
-          dev3: 10,
-        };
-        newGrades[`${savedStudent.id}_${sub.name}`] = defaultG;
-        trimesters.forEach((trim) => {
-          newGrades[`${savedStudent.id}_${sub.name}_${trim}`] = defaultG;
-        });
-      });
-      setGrades(newGrades);
     }
     setStudentToEdit(null);
   };
@@ -377,26 +358,6 @@ export default function App() {
     setStudents((prev) => [...prev, ...importedWithClass]);
     api.batchImportStudents(importedWithClass, targetClassId, currentClass).catch(console.error);
 
-    const updatedGrades = { ...grades };
-    const trimesters = ['1er Trimestre', '2ème Trimestre', '3ème Trimestre'];
-    importedWithClass.forEach((s) => {
-      subjects.forEach((sub) => {
-        const defaultG: StudentGrades = {
-          evaluations: 10,
-          dev1: 10,
-          dev2: 10,
-          composition: 10,
-          eval1: 10,
-          eval2: 10,
-          dev3: 10,
-        };
-        updatedGrades[`${s.id}_${sub.name}`] = defaultG;
-        trimesters.forEach((trim) => {
-          updatedGrades[`${s.id}_${sub.name}_${trim}`] = defaultG;
-        });
-      });
-    });
-    setGrades(updatedGrades);
   };
 
   // Sauvegarde des notes saisies pour un élève individuel
@@ -423,10 +384,10 @@ export default function App() {
           studentId: gradeEditModalData.student.id,
           subjectId: subject.id,
           subjectName: gradeEditModalData.subjectName,
-          evaluations: updatedGrades.evaluations ?? updatedGrades.eval1 ?? 10,
-          dev1: updatedGrades.dev1 ?? 10,
-          dev2: updatedGrades.dev2 ?? 10,
-          composition: updatedGrades.composition ?? 10,
+          evaluations: updatedGrades.evaluations ?? updatedGrades.eval1 ?? 0,
+          dev1: updatedGrades.dev1 ?? 0,
+          dev2: updatedGrades.dev2 ?? 0,
+          composition: updatedGrades.composition ?? 0,
           observation: updatedGrades.observation,
         },
       ],
@@ -460,10 +421,10 @@ export default function App() {
             studentId: student.id,
             subjectId: subj.id,
             subjectName: subj.name,
-            evaluations: g.evaluations ?? g.eval1 ?? 10,
-            dev1: g.dev1 ?? 10,
-            dev2: g.dev2 ?? 10,
-            composition: g.composition ?? 10,
+            evaluations: g.evaluations ?? g.eval1 ?? 0,
+            dev1: g.dev1 ?? 0,
+            dev2: g.dev2 ?? 0,
+            composition: g.composition ?? 0,
             observation: g.observation,
           });
         }
@@ -1055,20 +1016,11 @@ export default function App() {
                       currentClassStudents.map((student) => {
                         const keyWithTrim = `${student.id}_${selectedSubjectForGrade}_${trimester}`;
                         const keyDefault = `${student.id}_${selectedSubjectForGrade}`;
-                        const g = grades[keyWithTrim] || grades[keyDefault] || {
-                          evaluations: 10,
-                          dev1: 10,
-                          dev2: 10,
-                          composition: 10,
-                          eval1: 10,
-                          eval2: 10,
-                          dev3: 10,
-                        };
-
-                        const evalNotes = g.evaluations ?? g.eval1 ?? 10;
-                        const dev1 = g.dev1 ?? 10;
-                        const dev2 = g.dev2 ?? 10;
-                        const comp = g.composition ?? g.dev3 ?? 10;
+                        const g = grades[keyWithTrim] || grades[keyDefault];
+                        const evalNotes = g?.evaluations ?? g?.eval1 ?? 0;
+                        const dev1 = g?.dev1 ?? 0;
+                        const dev2 = g?.dev2 ?? 0;
+                        const comp = g?.composition ?? g?.dev3 ?? 0;
                         const cc = (evalNotes + dev1 + dev2) / 3;
                         const subjectAvg = (cc + 2 * comp) / 3;
 
@@ -1079,7 +1031,7 @@ export default function App() {
                               {student.lastName.toUpperCase()} {student.firstName}
                             </td>
                             <td className="py-2 px-2.5 text-center font-mono font-medium text-slate-800 bg-slate-50/50">
-                              {evalNotes.toFixed(2)}
+                              {g ? evalNotes.toFixed(2) : '—'}
                             </td>
                             <td className="py-2 px-2.5 text-center font-mono font-medium text-slate-800">
                               {dev1.toFixed(2)}
@@ -1463,7 +1415,7 @@ export default function App() {
         onClose={() => setGradeEditModalData(null)}
         student={gradeEditModalData?.student || null}
         subjectName={gradeEditModalData?.subjectName || ''}
-        initialGrades={gradeEditModalData?.grades || { eval1: 10, eval2: 10, dev1: 10, dev2: 10, dev3: 10 }}
+        initialGrades={gradeEditModalData?.grades || {}}
         onSave={handleSaveGrades}
       />
 
@@ -1473,11 +1425,12 @@ export default function App() {
         onClose={() => setIsBatchGradeModalOpen(false)}
         students={currentClassStudents}
         subjects={subjects}
-        grades={grades}
         currentClass={currentClass}
-        level={level}
+        selectedSubject={subjects.find((subject) => subject.name === selectedSubjectForGrade) || subjects[0] || null}
+        onSelectSubject={(subject) => setSelectedSubjectForGrade(subject.name)}
+        gradesMap={grades}
         trimester={trimester}
-        onSaveBatchGrades={handleSaveBatchGrades}
+        onSaveBatch={handleSaveBatchGrades}
       />
 
       {/* Modals d'Administration Full-Stack */}

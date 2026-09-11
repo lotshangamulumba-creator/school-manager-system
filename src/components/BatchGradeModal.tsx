@@ -44,26 +44,18 @@ export const BatchGradeModal: React.FC<BatchGradeModalProps> = ({
     classStudents.forEach((student) => {
       const g =
         gradesMap[`${student.id}_${selectedSubject.name}_${trimester}`] ||
-        gradesMap[`${student.id}_${selectedSubject.name}`] || {
-          evaluations: 10,
-          dev1: 10,
-          dev2: 10,
-          composition: 10,
-          eval1: 10,
-          eval2: 10,
-          dev3: 10,
-        };
+        gradesMap[`${student.id}_${selectedSubject.name}`];
 
-      const evalVal = g.evaluations ?? g.eval1 ?? 10;
-      const d1Val = g.dev1 ?? 10;
-      const d2Val = g.dev2 ?? 10;
-      const compVal = g.composition ?? g.dev3 ?? 10;
+      const evalVal = g?.evaluations ?? g?.eval1;
+      const d1Val = g?.dev1;
+      const d2Val = g?.dev2;
+      const compVal = g?.composition ?? g?.dev3;
 
       initial[student.id] = {
-        evalNote: evalVal.toString(),
-        dev1: d1Val.toString(),
-        dev2: d2Val.toString(),
-        comp: compVal.toString(),
+        evalNote: evalVal === undefined ? '' : evalVal.toString(),
+        dev1: d1Val === undefined ? '' : d1Val.toString(),
+        dev2: d2Val === undefined ? '' : d2Val.toString(),
+        comp: compVal === undefined ? '' : compVal.toString(),
       };
     });
 
