@@ -164,6 +164,7 @@ class DatabaseEngine {
       fs.renameSync(tmpFile, DB_FILE);
     } catch (err) {
       console.error('Failed to write database file:', err);
+      throw new Error('Impossible de persister la base de données.');
     }
   }
 

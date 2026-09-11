@@ -11,6 +11,7 @@ export interface Subject {
 
 export interface Student {
   id: string;
+  classId?: string;
   firstName: string;
   lastName: string;
   dob: string; // DD/MM/YYYY

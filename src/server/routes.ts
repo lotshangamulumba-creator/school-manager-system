@@ -6,6 +6,33 @@ import { computeClassResults, computeEstablishmentStats } from './academic.js';
 
 export const apiRouter = Router();
 
+const TEACHER_SCOPED_ROLES = ['TEACHER'];
+const STAFF_ROLES = ['ADMIN', 'DIRECTOR', 'SECRETARY', 'TEACHER'];
+const TERMS = ['1er Trimestre', '2ème Trimestre', '3ème Trimestre'] as const;
+
+function resolveClass(data: ReturnType<typeof db.getData>, classId?: unknown, className?: unknown) {
+  if (typeof classId !== 'string' || !classId) return null;
+  const cls = data.classes.find(candidate => candidate.id === classId);
+  if (!cls || (className !== undefined && className !== cls.nom)) return null;
+  return cls;
+}
+
+function teacherCanAccessClass(req: AuthenticatedRequest, cls: DbClass) {
+  if (!req.user || !TEACHER_SCOPED_ROLES.includes(req.user.role)) return true;
+  const teacher = db.getData().teachers.find(candidate => candidate.userId === req.user?.id);
+  return Boolean(teacher && cls.headTeacherId === teacher.id);
+}
+
+function teacherClassIds(req: AuthenticatedRequest, data: ReturnType<typeof db.getData>) {
+  if (req.user?.role !== 'TEACHER') return null;
+  const teacher = data.teachers.find(candidate => candidate.userId === req.user?.id);
+  return new Set(data.classes.filter(cls => cls.headTeacherId === teacher?.id).map(cls => cls.id));
+}
+
+function rejectMismatchedReference(res: Response, message: string) {
+  return res.status(400).json({ error: message });
+}
+
 // ============================================================================
 // 1. AUTHENTIFICATION
 // ============================================================================
@@ -344,16 +371,20 @@ apiRouter.put('/subjects/:id', authMiddleware, requireRoles(['ADMIN']), (req: Au
 // 6. ÉLÈVES
 // ============================================================================
 
-apiRouter.get('/students', authMiddleware, (req: Request, res: Response) => {
+apiRouter.get('/students', authMiddleware, requireRoles(STAFF_ROLES), (req: AuthenticatedRequest, res: Response) => {
   const { classId, className, search } = req.query;
   const data = db.getData();
   let list = data.students.filter(s => s.statut);
+  const scopedClassIds = teacherClassIds(req, data);
+  if (scopedClassIds) list = list.filter(s => scopedClassIds.has(s.classId));
 
   if (classId) {
-    list = list.filter(s => s.classId === classId);
-  }
-  if (className) {
-    list = list.filter(s => s.className === className);
+    const cls = resolveClass(data, classId, className);
+    if (!cls) return rejectMismatchedReference(res, 'classId/className ne correspondent pas à une classe existante.');
+    if (!teacherCanAccessClass(req as AuthenticatedRequest, cls)) return res.status(403).json({ error: 'Accès limité à votre périmètre de classe.' });
+    list = list.filter(s => s.classId === cls.id);
+  } else if (className) {
+    return rejectMismatchedReference(res, 'Utilisez classId et le libellé exact de la classe.');
   }
   if (search && typeof search === 'string') {
     const q = search.toLowerCase();
@@ -367,16 +398,18 @@ apiRouter.get('/students', authMiddleware, (req: Request, res: Response) => {
   res.json(list);
 });
 
-apiRouter.post('/students', authMiddleware, (req: AuthenticatedRequest, res: Response) => {
+apiRouter.post('/students', authMiddleware, requireRoles(STAFF_ROLES), (req: AuthenticatedRequest, res: Response) => {
   const { matricule, nom, prenom, sexe, dateNaissance, lieuNaissance, parentPhone, classId, className } = req.body;
   if (!nom || !prenom || !dateNaissance) {
     return res.status(400).json({ error: 'Nom, prénom et date de naissance requis.' });
   }
 
   const data = db.getData();
-  const cls = data.classes.find(c => c.id === classId || c.nom === className);
-  const targetClassId = cls ? cls.id : classId || 'cls-6a';
-  const targetClassName = cls ? cls.nom : className || '6ème A';
+  const cls = resolveClass(data, classId, className);
+  if (!cls) return rejectMismatchedReference(res, 'classId doit désigner une classe existante et className doit correspondre exactement.');
+  if (!teacherCanAccessClass(req, cls)) return res.status(403).json({ error: 'Vous ne pouvez gérer que votre périmètre de classe.' });
+  const targetClassId = cls.id;
+  const targetClassName = cls.nom;
 
   const autoMatricule = matricule || `CEM-${String(data.students.length + 1).padStart(3, '0')}`;
   const now = new Date().toISOString();
@@ -404,7 +437,7 @@ apiRouter.post('/students', authMiddleware, (req: AuthenticatedRequest, res: Res
   res.status(201).json(newStudent);
 });
 
-apiRouter.put('/students/:id', authMiddleware, (req: AuthenticatedRequest, res: Response) => {
+apiRouter.put('/students/:id', authMiddleware, requireRoles(STAFF_ROLES), (req: AuthenticatedRequest, res: Response) => {
   const data = db.getData();
   const student = data.students.find(s => s.id === req.params.id || s.matricule === req.params.id);
   if (!student) return res.status(404).json({ error: 'Élève non trouvé.' });
@@ -416,15 +449,12 @@ apiRouter.put('/students/:id', authMiddleware, (req: AuthenticatedRequest, res: 
   if (dateNaissance) student.dateNaissance = dateNaissance;
   if (lieuNaissance !== undefined) student.lieuNaissance = lieuNaissance;
   if (parentPhone !== undefined) student.parentPhone = parentPhone;
-  if (className) {
-    student.className = className;
-    const cls = data.classes.find(c => c.nom === className);
-    if (cls) student.classId = cls.id;
-  }
-  if (classId) {
-    student.classId = classId;
-    const cls = data.classes.find(c => c.id === classId);
-    if (cls) student.className = cls.nom;
+  if (classId !== undefined || className !== undefined) {
+    const cls = resolveClass(data, classId || student.classId, className || student.className);
+    if (!cls) return rejectMismatchedReference(res, 'classId et className doivent désigner la même classe existante.');
+    if (!teacherCanAccessClass(req, cls)) return res.status(403).json({ error: 'Vous ne pouvez gérer que votre périmètre de classe.' });
+    student.classId = cls.id;
+    student.className = cls.nom;
   }
   if (typeof statut === 'boolean') student.statut = statut;
   student.updatedAt = new Date().toISOString();
@@ -447,22 +477,30 @@ apiRouter.delete('/students/:id', authMiddleware, requireRoles(['ADMIN']), (req:
 });
 
 // Import par lot (Excel)
-apiRouter.post('/students/batch-import', authMiddleware, (req: AuthenticatedRequest, res: Response) => {
-  const { students: importedList, targetClass } = req.body;
+apiRouter.post('/students/batch-import', authMiddleware, requireRoles(STAFF_ROLES), (req: AuthenticatedRequest, res: Response) => {
+  const { students: importedList, targetClassId, targetClassName } = req.body;
   if (!Array.isArray(importedList) || importedList.length === 0) {
     return res.status(400).json({ error: 'Liste d’élèves invalide ou vide.' });
   }
 
   const data = db.getData();
+  const cls = resolveClass(data, targetClassId, targetClassName);
+  if (!cls) return rejectMismatchedReference(res, 'targetClassId doit désigner une classe existante et targetClassName doit correspondre.');
+  if (!teacherCanAccessClass(req, cls)) return res.status(403).json({ error: 'Vous ne pouvez importer que dans votre périmètre de classe.' });
   const now = new Date().toISOString();
-  let count = 0;
-
+  const pendingStudents: DbStudent[] = [];
+  const importedMatricules = new Set<string>();
   for (const row of importedList) {
-    if (!row.nom || !row.prenom) continue;
-    const matricule = row.matricule || `CEM-${String(data.students.length + 1 + count).padStart(3, '0')}`;
+    if (!row || !row.nom || !row.prenom) {
+      return res.status(400).json({ error: 'Chaque ligne importée doit contenir un nom et un prénom.' });
+    }
+    const matricule = row.matricule || `CEM-${String(data.students.length + 1 + pendingStudents.length).padStart(3, '0')}`;
     
     // Vérifier doublon
-    if (data.students.some(s => s.matricule === matricule)) continue;
+    if (data.students.some(s => s.matricule === matricule) || importedMatricules.has(matricule)) {
+      return res.status(400).json({ error: `Matricule dupliqué: ${matricule}. Import annulé.` });
+    }
+    importedMatricules.add(matricule);
 
     const newStudent: DbStudent = {
       id: matricule,
@@ -472,52 +510,82 @@ apiRouter.post('/students/batch-import', authMiddleware, (req: AuthenticatedRequ
       sexe: row.sexe === 'F' ? 'F' : 'M',
       dateNaissance: row.dateNaissance || row.dob || '01/01/2010',
       parentPhone: row.parentPhone || row.telephone || '',
-      classId: targetClass || 'cls-6a',
-      className: targetClass || '6ème A',
+      classId: cls.id,
+      className: cls.nom,
       statut: true,
       createdAt: now,
       updatedAt: now
     };
-    data.students.push(newStudent);
-    count++;
+    pendingStudents.push(newStudent);
   }
 
-  db.persist();
-  db.logAudit('BATCH_IMPORT_STUDENTS', `Import de ${count} élèves depuis Excel`, req.user?.id, req.user?.email, req.ip);
+  const previousStudents = data.students;
+  try {
+    data.students = [...previousStudents, ...pendingStudents];
+    db.persist();
+  } catch (error) {
+    data.students = previousStudents;
+    console.error('Student import failed and was rolled back:', error);
+    return res.status(500).json({ error: 'L’import a échoué; aucun élève n’a été ajouté.' });
+  }
+  db.logAudit('BATCH_IMPORT_STUDENTS', `Import de ${pendingStudents.length} élèves depuis Excel`, req.user?.id, req.user?.email, req.ip);
 
-  res.json({ success: true, importedCount: count, total: data.students.length });
+  res.json({ success: true, importedCount: pendingStudents.length, total: data.students.length });
 });
 
 // ============================================================================
 // 7. NOTES & ÉVALUATIONS (Validation stricte 0 <= note <= 20)
 // ============================================================================
 
-apiRouter.get('/grades', authMiddleware, (req: Request, res: Response) => {
+apiRouter.get('/grades', authMiddleware, requireRoles(STAFF_ROLES), (req: AuthenticatedRequest, res: Response) => {
   const { classId, className, term, studentId } = req.query;
   const data = db.getData();
   let list = data.grades;
+  const scopedClassIds = teacherClassIds(req, data);
+  if (scopedClassIds) list = list.filter(g => scopedClassIds.has(g.classId));
 
   if (studentId) list = list.filter(g => g.studentId === studentId);
-  if (classId) list = list.filter(g => g.classId === classId);
-  if (className) list = list.filter(g => g.className === className);
+  if (classId) {
+    const cls = resolveClass(data, classId, className);
+    if (!cls) return rejectMismatchedReference(res, 'classId/className ne correspondent pas à une classe existante.');
+    if (!teacherCanAccessClass(req, cls)) return res.status(403).json({ error: 'Accès limité à votre périmètre de classe.' });
+    list = list.filter(g => g.classId === cls.id);
+  } else if (className) {
+    return rejectMismatchedReference(res, 'Utilisez classId et le libellé exact de la classe.');
+  }
   if (term) list = list.filter(g => g.term === term);
 
   res.json(list);
 });
 
 // Saisie en lot sécurisée
-apiRouter.post('/grades/batch', authMiddleware, (req: AuthenticatedRequest, res: Response) => {
+apiRouter.post('/grades/batch', authMiddleware, requireRoles(STAFF_ROLES), (req: AuthenticatedRequest, res: Response) => {
   const { grades: gradeEntries, classId, className, term } = req.body;
-  if (!Array.isArray(gradeEntries)) {
+  if (!Array.isArray(gradeEntries) || gradeEntries.length === 0 || typeof classId !== 'string' || typeof className !== 'string') {
     return res.status(400).json({ error: 'Format de notes invalide.' });
   }
 
   const data = db.getData();
+  const cls = resolveClass(data, classId, className);
+  if (!cls) return rejectMismatchedReference(res, 'classId/className ne correspondent pas à une classe existante.');
+  if (!teacherCanAccessClass(req, cls)) return res.status(403).json({ error: 'Vous ne pouvez saisir des notes que dans votre périmètre de classe.' });
+  const actorTeacherId = data.teachers.find(teacher => teacher.userId === req.user?.id)?.id;
+  const selectedTerm = term || '1er Trimestre';
+  if (!TERMS.includes(selectedTerm)) return res.status(400).json({ error: 'Trimestre invalide.' });
   const now = new Date().toISOString();
-  let updatedCount = 0;
+  const previousGrades = data.grades;
+  const nextGrades = [...data.grades];
 
   for (const entry of gradeEntries) {
     const { studentId, subjectId, evaluations, dev1, dev2, composition, observation } = entry;
+    const student = data.students.find(candidate => candidate.id === studentId && candidate.statut);
+    const subject = data.subjects.find(candidate => candidate.id === subjectId && candidate.statut);
+    if (!student || student.classId !== cls.id) {
+      return res.status(400).json({ error: `Élève ${studentId} absent de la classe ${cls.id}. Lot annulé.` });
+    }
+    if (!subject) {
+      return res.status(400).json({ error: `Matière inconnue: ${subjectId}. Lot annulé.` });
+    }
 
     // Validation stricte 0 <= note <= 20
     const ev = Number(evaluations);
@@ -536,34 +604,32 @@ apiRouter.post('/grades/batch', authMiddleware, (req: AuthenticatedRequest, res:
       });
     }
 
-    const existingIdx = data.grades.findIndex(
-      g => g.studentId === studentId && g.subjectId === subjectId && g.term === (term || '1er Trimestre')
+    const existingIdx = nextGrades.findIndex(
+      g => g.studentId === studentId && g.subjectId === subjectId && g.classId === cls.id && g.term === selectedTerm
     );
 
-    const subject = data.subjects.find(s => s.id === subjectId);
-    const subjectName = subject ? subject.nom : entry.subjectName || 'Matière';
-
     if (existingIdx >= 0) {
-      data.grades[existingIdx] = {
-        ...data.grades[existingIdx],
+      nextGrades[existingIdx] = {
+        ...nextGrades[existingIdx],
         evaluations: ev,
         dev1: d1,
         dev2: d2,
         composition: cp,
-        observation: observation || data.grades[existingIdx].observation,
+        observation: observation ?? nextGrades[existingIdx].observation,
+        teacherId: actorTeacherId ?? nextGrades[existingIdx].teacherId,
         updatedAt: now
       };
     } else {
-      data.grades.push({
+      nextGrades.push({
         id: `grd-${studentId}-${subjectId}-${Date.now()}`,
         studentId,
         subjectId,
-        subjectName,
-        classId: classId || 'cls-6a',
-        className: className || '6ème A',
-        teacherId: req.user?.id,
+        subjectName: subject.nom,
+        classId: cls.id,
+        className: cls.nom,
+        teacherId: actorTeacherId,
         academicYearId: 'ay-2025-2026',
-        term: term || '1er Trimestre',
+        term: selectedTerm,
         evaluations: ev,
         dev1: d1,
         dev2: d2,
@@ -573,32 +639,38 @@ apiRouter.post('/grades/batch', authMiddleware, (req: AuthenticatedRequest, res:
         updatedAt: now
       });
     }
-    updatedCount++;
   }
 
-  db.persist();
-  db.logAudit('BATCH_UPDATE_GRADES', `Mise à jour de ${updatedCount} notes pour classe ${className || classId}`, req.user?.id, req.user?.email, req.ip);
+  try {
+    data.grades = nextGrades;
+    db.persist();
+  } catch (error) {
+    data.grades = previousGrades;
+    console.error('Batch grade update failed and was rolled back:', error);
+    return res.status(500).json({ error: 'La saisie des notes a échoué; aucune note n’a été modifiée.' });
+  }
+  db.logAudit('BATCH_UPDATE_GRADES', `Mise à jour atomique de ${gradeEntries.length} notes pour classe ${cls.nom}`, req.user?.id, req.user?.email, req.ip);
 
-  res.json({ success: true, updatedCount });
+  res.json({ success: true, updatedCount: gradeEntries.length });
 });
 
 // ============================================================================
 // 8. RÉSULTATS, CLASSEMENTS & MOYENNES (Calculs serveur certifiés)
 // ============================================================================
 
-apiRouter.get('/results/class/:classId', authMiddleware, (req: Request, res: Response) => {
+apiRouter.get('/results/class/:classId', authMiddleware, requireRoles(STAFF_ROLES), (req: AuthenticatedRequest, res: Response) => {
   const { classId } = req.params;
-  const term = (req.query.term as any) || '1er Trimestre';
+  const term = (req.query.term as typeof TERMS[number]) || '1er Trimestre';
 
   const data = db.getData();
-  // Trouver la classe par ID ou par nom pour rétrocompatibilité
-  const cls = data.classes.find(c => c.id === classId || c.nom === classId);
-  const targetId = cls ? cls.id : classId;
+  const cls = resolveClass(data, classId);
+  if (!cls) return res.status(404).json({ error: 'Classe inconnue.' });
+  if (!teacherCanAccessClass(req, cls)) return res.status(403).json({ error: 'Accès limité à votre périmètre de classe.' });
 
-  const results = computeClassResults(targetId, term);
+  const results = computeClassResults(cls.id, term);
   res.json({
-    classId: targetId,
-    className: cls ? cls.nom : classId,
+    classId: cls.id,
+    className: cls.nom,
     term,
     results
   });
@@ -628,19 +700,49 @@ apiRouter.get('/backup/export', authMiddleware, requireRoles(['ADMIN']), (req: A
 
 apiRouter.post('/backup/restore', authMiddleware, requireRoles(['ADMIN']), (req: AuthenticatedRequest, res: Response) => {
   const { backupData } = req.body;
-  if (!backupData || !Array.isArray(backupData.students) || !Array.isArray(backupData.users)) {
+  if (
+    !backupData ||
+    !Array.isArray(backupData.students) ||
+    !Array.isArray(backupData.users) ||
+    !Array.isArray(backupData.classes) ||
+    !Array.isArray(backupData.subjects) ||
+    !Array.isArray(backupData.grades)
+  ) {
     return res.status(400).json({ error: 'Fichier de sauvegarde invalide.' });
   }
 
   const current = db.getData();
-  current.students = backupData.students;
-  current.grades = backupData.grades || [];
-  current.classes = backupData.classes || current.classes;
-  current.subjects = backupData.subjects || current.subjects;
-  current.teachers = backupData.teachers || current.teachers;
+  const previous = JSON.parse(JSON.stringify(current)) as typeof current;
+  const before = {
+    users: current.users.length,
+    students: current.students.length,
+    grades: current.grades.length
+  };
+  const restored = {
+    ...current,
+    users: backupData.users,
+    students: backupData.students,
+    grades: backupData.grades,
+    classes: backupData.classes,
+    subjects: backupData.subjects,
+    teachers: Array.isArray(backupData.teachers) ? backupData.teachers : current.teachers
+  };
 
-  db.persist();
-  db.logAudit('BACKUP_RESTORE', 'Restauration complète de la base effectuée', req.user?.id, req.user?.email, req.ip);
+  try {
+    Object.assign(current, restored);
+    db.persist();
+  } catch (error) {
+    Object.assign(current, previous);
+    console.error('Backup restore failed and was rolled back:', error);
+    return res.status(500).json({ error: 'La restauration a échoué; aucune donnée n’a été modifiée.' });
+  }
+  db.logAudit(
+    'BACKUP_RESTORE',
+    `Restauration complète: avant users=${before.users}, élèves=${before.students}, notes=${before.grades}; après users=${restored.users.length}, élèves=${restored.students.length}, notes=${restored.grades.length}`,
+    req.user?.id,
+    req.user?.email,
+    req.ip
+  );
 
   res.json({ success: true, message: 'Base de données restaurée avec succès.' });
 });

@@ -78,6 +78,7 @@ export default function App() {
   // Configuration académique CEMINACE
   const [level, setLevel] = useState<SchoolLevel>('Collège');
   const [classes, setClasses] = useState<string[]>(CEMINACE_LEVELS['Collège'].classes);
+  const [classIds, setClassIds] = useState<Record<string, string>>({});
   const [currentClass, setCurrentClass] = useState<string>(CEMINACE_LEVELS['Collège'].classes[0]);
   const [trimester, setTrimester] = useState<string>('1er Trimestre');
 
@@ -141,6 +142,7 @@ export default function App() {
             lieuNaissance: bs.lieuNaissance || 'Brazzaville',
             telephoneParent: bs.parentPhone || '',
             className: bs.className || '6ème A',
+            classId: bs.classId,
           }))
         );
       }
@@ -148,11 +150,13 @@ export default function App() {
       if (backendClasses.length > 0) {
         const classNames = backendClasses.map((c) => c.nom);
         setClasses(classNames);
+        setClassIds(Object.fromEntries(backendClasses.map((c) => [c.nom, c.id])));
       }
 
       if (backendSubjects.length > 0) {
         setSubjects(
           backendSubjects.map((s) => ({
+            id: s.id,
             name: s.nom,
             coeff: s.coeff,
             specialty: s.specialty || 'Sciences',
@@ -298,6 +302,11 @@ export default function App() {
 
   // Sauvegarde d'un élève (Ajout ou Modification)
   const handleSaveStudent = (savedStudent: Student) => {
+    const targetClassId = savedStudent.classId || classIds[savedStudent.className];
+    if (!targetClassId) {
+      console.error('[TIC-TiG] Classe sans ID réel, enregistrement refusé.');
+      return;
+    }
     if (studentToEdit) {
       setStudents((prev) => prev.map((s) => (s.id === savedStudent.id ? savedStudent : s)));
       api.updateStudent(savedStudent.id, {
@@ -306,6 +315,7 @@ export default function App() {
         sexe: savedStudent.sexe,
         dateNaissance: savedStudent.dateNaissance,
         parentPhone: savedStudent.telephoneParent,
+        classId: targetClassId,
         className: savedStudent.className,
       }).catch(console.error);
     } else {
@@ -317,6 +327,7 @@ export default function App() {
         sexe: savedStudent.sexe,
         dateNaissance: savedStudent.dateNaissance,
         parentPhone: savedStudent.telephoneParent,
+        classId: targetClassId,
         className: savedStudent.className,
       }).catch(console.error);
 
@@ -357,12 +368,18 @@ export default function App() {
 
   // Import d'élèves depuis Excel ou Word
   const handleImportStudents = (imported: Student[]) => {
-    setStudents((prev) => [...prev, ...imported]);
-    api.batchImportStudents(imported, currentClass).catch(console.error);
+    const targetClassId = classIds[currentClass];
+    if (!targetClassId) {
+      console.error('[TIC-TiG] Import refusé: classe sans ID réel.');
+      return;
+    }
+    const importedWithClass = imported.map((student) => ({ ...student, classId: targetClassId }));
+    setStudents((prev) => [...prev, ...importedWithClass]);
+    api.batchImportStudents(importedWithClass, targetClassId, currentClass).catch(console.error);
 
     const updatedGrades = { ...grades };
     const trimesters = ['1er Trimestre', '2ème Trimestre', '3ème Trimestre'];
-    imported.forEach((s) => {
+    importedWithClass.forEach((s) => {
       subjects.forEach((sub) => {
         const defaultG: StudentGrades = {
           evaluations: 10,
@@ -394,11 +411,17 @@ export default function App() {
     }));
 
     // Sauvegarde en base de données sur le serveur
+    const subject = subjects.find((candidate) => candidate.name === gradeEditModalData.subjectName);
+    const classId = classIds[currentClass];
+    if (!subject?.id || !classId) {
+      console.error('[TIC-TiG] Note refusée: référence classe/matière sans ID réel.');
+      return;
+    }
     api.saveBatchGrades({
       grades: [
         {
           studentId: gradeEditModalData.student.id,
-          subjectId: gradeEditModalData.subjectName,
+          subjectId: subject.id,
           subjectName: gradeEditModalData.subjectName,
           evaluations: updatedGrades.evaluations ?? updatedGrades.eval1 ?? 10,
           dev1: updatedGrades.dev1 ?? 10,
@@ -407,7 +430,7 @@ export default function App() {
           observation: updatedGrades.observation,
         },
       ],
-      classId: currentClass,
+      classId,
       className: currentClass,
       term: trimester,
     }).catch(console.error);
@@ -422,6 +445,11 @@ export default function App() {
 
     // Transformer le lot pour l'API REST
     const gradeList: any[] = [];
+    const classId = classIds[currentClass];
+    if (!classId) {
+      console.error('[TIC-TiG] Notes refusées: classe sans ID réel.');
+      return;
+    }
     currentClassStudents.forEach((student) => {
       subjects.forEach((subj) => {
         const key = `${student.id}_${subj.name}_${trimester}`;
@@ -430,7 +458,7 @@ export default function App() {
         if (g) {
           gradeList.push({
             studentId: student.id,
-            subjectId: subj.name,
+            subjectId: subj.id,
             subjectName: subj.name,
             evaluations: g.evaluations ?? g.eval1 ?? 10,
             dev1: g.dev1 ?? 10,
@@ -445,7 +473,7 @@ export default function App() {
     if (gradeList.length > 0) {
       api.saveBatchGrades({
         grades: gradeList,
-        classId: currentClass,
+        classId,
         className: currentClass,
         term: trimester,
       }).catch(console.error);

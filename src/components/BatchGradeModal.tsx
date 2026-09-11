@@ -158,15 +158,15 @@ export const BatchGradeModal: React.FC<BatchGradeModalProps> = ({
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold text-slate-700">Matière sélectionnée :</span>
             <select
-              value={selectedSubject.name}
+              value={selectedSubject.id}
               onChange={(e) => {
-                const sub = subjects.find((s) => s.name === e.target.value);
+                const sub = subjects.find((s) => s.id === e.target.value);
                 if (sub) onSelectSubject(sub);
               }}
               className="bg-white border border-slate-300 text-xs font-bold text-[#1E3A5F] rounded-lg px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-[#1E3A5F]"
             >
               {subjects.map((sub) => (
-                <option key={sub.name} value={sub.name}>
+                <option key={sub.id} value={sub.id}>
                   {sub.name} ({sub.specialty} • Coeff {sub.coeff})
                 </option>
               ))}

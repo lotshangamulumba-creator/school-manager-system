@@ -64,6 +64,7 @@ export interface ApiGrade {
   subjectName: string;
   classId: string;
   className: string;
+  teacherId?: string;
   term: '1er Trimestre' | '2ème Trimestre' | '3ème Trimestre';
   evaluations: number;
   dev1: number;
@@ -225,10 +226,10 @@ class ApiService {
     });
   }
 
-  async batchImportStudents(students: any[], targetClass: string): Promise<{ importedCount: number; total: number }> {
+  async batchImportStudents(students: any[], targetClassId: string, targetClassName: string): Promise<{ importedCount: number; total: number }> {
     return this.request<{ importedCount: number; total: number }>('/students/batch-import', {
       method: 'POST',
-      body: JSON.stringify({ students, targetClass }),
+      body: JSON.stringify({ students, targetClassId, targetClassName }),
     });
   }
 
