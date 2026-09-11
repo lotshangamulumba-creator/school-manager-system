@@ -35,13 +35,14 @@ Puis ouvrez votre navigateur à l'adresse : **`http://localhost:3000`**
 
 ---
 
-## 🔑 Comptes de Démonstration Préconfigurés
+## 🔑 Initialisation des comptes
 
-| Profil | Email | Mot de passe | Permissions |
-|---|---|---|---|
-| **Administrateur** | `admin@ceminace.cg` | `admin1234` | Accès complet (Élèves, Enseignants, Classes, Sauvegardes, Bulletins) |
-| **Enseignant** | `prof.math@ceminace.cg` | `prof1234` | Saisie des notes de sa matière, consultation de ses classes |
-| **Directeur** | `direction@ceminace.cg` | `direct1234` | Tableau de bord général, statistiques, consultation globale |
+Les mots de passe ne sont pas inclus dans le code ni dans la documentation. Avant une
+première initialisation, copiez `.env.example` vers `.env` et définissez au minimum
+`JWT_SECRET`, `SEED_ADMIN_PASSWORD` et `SEED_TEACHER_PASSWORD` avec des valeurs uniques.
+Ces variables ne sont utilisées que si `database/ceminace_data.json` n'existe pas encore.
+En développement, si les mots de passe seed ne sont pas définis, des valeurs aléatoires
+sont générées et affichées une seule fois dans la console du serveur.
 
 ---
 

@@ -39,8 +39,7 @@ echo      L'application va s'ouvrir dans votre navigateur web.
 echo ====================================================================
 echo.
 echo Identifiants de test :
-echo   - Administrateur : admin@ceminace.cg    / admin1234
-echo   - Enseignant     : prof.math@ceminace.cg / prof1234
+echo   - Les mots de passe sont définis dans le fichier .env
 echo.
 
 start "" cmd /c "timeout /t 2 /nobreak >nul & start http://localhost:3000"

@@ -29,12 +29,6 @@ async function startServer() {
     });
   });
 
-  // Route de téléchargement direct du ZIP pour utilisation locale
-  app.get(['/tictig-ceminace.zip', '/api/download-zip'], (req, res) => {
-    const zipPath = path.join(process.cwd(), 'public', 'tictig-ceminace.zip');
-    res.download(zipPath, 'tictig-ceminace.zip');
-  });
-
   // Servir les fichiers statiques de public/
   app.use(express.static(path.join(process.cwd(), 'public')));
 

@@ -20,7 +20,7 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({ 
   const [telephone, setTelephone] = useState('');
   const [specialite, setSpecialite] = useState('Mathématiques & Sciences');
   const [createAccount, setCreateAccount] = useState(true);
-  const [initialPassword, setInitialPassword] = useState('prof1234');
+  const [initialPassword, setInitialPassword] = useState('');
 
   const loadTeachers = async () => {
     setLoading(true);
