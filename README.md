@@ -1,4 +1,4 @@
-# TIC-TiG Scolaire - Complexe Scolaire Privé CEMINACE (Brazzaville)
+# MonPilot School ERP - Complexe Scolaire Privé CEMINACE (Brazzaville)
 
 Plateforme centralisée de gestion scolaire, calculs officiels des moyennes pondérées selon le système éducatif du Congo-Brazzaville, saisie des notes et édition des bulletins officiels en PDF.
 

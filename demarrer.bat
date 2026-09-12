@@ -1,11 +1,11 @@
 @echo off
 setlocal enabledelayedexpansion
-title TIC-TiG Scolaire - Complexe Scolaire Prive CEMINACE
+title MonPilot School ERP - Complexe Scolaire Prive CEMINACE
 color 0B
 cls
 
 echo ====================================================================
-echo             PLATEFORME SCOLAIRE TIC-TiG - CEMINACE
+echo             PLATEFORME SCOLAIRE MONPILOT SCHOOL ERP - CEMINACE
 echo         Complexe Scolaire Prive CEMINACE - Brazzaville
 echo ====================================================================
 echo.
@@ -34,7 +34,7 @@ if not exist "node_modules\" (
 
 echo.
 echo ====================================================================
-echo [OK] Demarrage du serveur TIC-TiG sur http://localhost:3000
+echo [OK] Demarrage du serveur MonPilot School ERP sur http://localhost:3000
 echo      L'application va s'ouvrir dans votre navigateur web.
 echo ====================================================================
 echo.

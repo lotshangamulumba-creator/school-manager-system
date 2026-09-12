@@ -1,5 +1,5 @@
 {
-  "name": "TIC-TiG",
+  "name": "MonPilot School ERP",
   "description": "Plateforme scolaire en ligne pour le Complexe Scolaire Privé CEMINACE (Brazzaville) avec gestion des élèves, enseignants, saisie sécurisée des notes, calculs de moyennes et bulletins PDF officiels.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

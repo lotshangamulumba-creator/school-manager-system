@@ -22,7 +22,7 @@ async function startServer() {
   app.get('/api/health', (req, res) => {
     res.json({
       status: 'ok',
-      platform: 'TIC-TiG School Management Platform',
+      platform: 'MonPilot School ERP',
       version: '2.0.0',
       establishment: 'Complexe Scolaire Privé CEMINACE (Brazzaville)',
       timestamp: new Date().toISOString()
@@ -51,10 +51,10 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[TIC-TiG Server] Plateforme scolaire opérationnelle sur http://0.0.0.0:${PORT}`);
+    console.log(`[MonPilot Server] Plateforme scolaire opérationnelle sur http://0.0.0.0:${PORT}`);
   });
 }
 
 startServer().catch(err => {
-  console.error('[TIC-TiG Server] Erreur fatale au démarrage du serveur:', err);
+  console.error('[MonPilot Server] Erreur fatale au démarrage du serveur:', err);
 });

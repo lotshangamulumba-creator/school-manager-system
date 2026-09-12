@@ -1,5 +1,5 @@
 =============================================================================
-GUIDE D'UTILISATION SUR WINDOWS - APPLICATION TIC-TiG (CEMINACE BRAZZAVILLE)
+GUIDE D'UTILISATION SUR WINDOWS - APPLICATION MONPILOT SCHOOL ERP (CEMINACE BRAZZAVILLE)
 =============================================================================
 
 Ce dossier contient les DEUX versions complètes de l'application :
