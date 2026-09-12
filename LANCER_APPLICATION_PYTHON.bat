@@ -1,7 +1,7 @@
 @echo off
-title TIC-TiG - Desktop Python Tkinter (980x683 px)
+title MonPilot School ERP - Desktop Python Tkinter (980x683 px)
 echo =====================================================================
-echo   Lancement de l'Application TIC-TiG (Desktop Python Tkinter)
+echo   Lancement de l'Application MonPilot School ERP (Desktop Python Tkinter)
 echo   Complexe Scolaire Prive CEMINACE - Brazzaville, Congo
 echo =====================================================================
 echo.
@@ -18,7 +18,7 @@ if %errorlevel% neq 0 (
 echo [INFO] Verification des modules optionnels (Excel, Word, PDF)...
 pip install openpyxl python-docx reportlab --quiet 2>nul
 
-echo [OK] Demarrage de l'interface TIC-TiG (980x683 pixels)...
+echo [OK] Demarrage de l'interface MonPilot School ERP (980x683 pixels)...
 python tic_tig.py
 
 if %errorlevel% neq 0 (

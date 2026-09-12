@@ -1,4 +1,4 @@
-// Service API Client pour TIC-TiG
+// Service API Client pour MonPilot School ERP
 
 const API_BASE = '/api';
 

@@ -11,7 +11,7 @@ function drawWatermark(doc: jsPDF, pageWidth: number) {
   doc.setTextColor(230, 236, 245);
   doc.setFontSize(54);
   doc.setFont('helvetica', 'bold');
-  doc.text('EduTigTic', pageWidth / 2, 140, { align: 'center', angle: 45 });
+  doc.text('MonPilot', pageWidth / 2, 140, { align: 'center', angle: 45 });
   doc.setFontSize(14);
   doc.text('CEMINACE - BRAZZAVILLE', pageWidth / 2, 160, { align: 'center', angle: 45 });
   doc.restoreGraphicsState();
@@ -31,7 +31,7 @@ export function renderStudentBulletinPage(
 ) {
   const pageWidth = doc.internal.pageSize.getWidth();
 
-  // Watermark EduTigTic
+  // Watermark MonPilot
   drawWatermark(doc, pageWidth);
 
   const isEn = lang === 'en';
@@ -335,7 +335,7 @@ export function generateClassResultsPDF(
   const pageWidth = doc.internal.pageSize.getWidth();
   const isEn = lang === 'en';
 
-  // Watermark EduTigTic
+  // Watermark MonPilot
   drawWatermark(doc, pageWidth);
 
   // Header - République du Congo

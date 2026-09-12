@@ -1,7 +1,7 @@
 #!/bin/bash
 clear
 echo "===================================================================="
-echo "            PLATEFORME SCOLAIRE TIC-TiG (CEMINACE)"
+echo "            PLATEFORME SCOLAIRE MONPILOT SCHOOL ERP (CEMINACE)"
 echo "        Complexe Scolaire Privé CEMINACE - Brazzaville"
 echo "===================================================================="
 echo ""
@@ -19,7 +19,7 @@ fi
 
 echo ""
 echo "===================================================================="
-echo "[OK] Démarrage du serveur TIC-TiG sur : http://localhost:3000"
+echo "[OK] Démarrage du serveur MonPilot School ERP sur : http://localhost:3000"
 echo "     Ouvrez votre navigateur web à l'adresse : http://localhost:3000"
 echo "===================================================================="
 echo ""

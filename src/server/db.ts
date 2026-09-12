@@ -203,9 +203,9 @@ class DatabaseEngine {
       throw new Error('SEED_ADMIN_PASSWORD et SEED_TEACHER_PASSWORD doivent être définis pour initialiser la base en production.');
     }
     if (process.env.NODE_ENV !== 'production' && (!process.env.SEED_ADMIN_PASSWORD || !process.env.SEED_TEACHER_PASSWORD)) {
-      console.warn('[TIC-TiG] Base initialisée avec des mots de passe de développement générés. Définissez SEED_ADMIN_PASSWORD et SEED_TEACHER_PASSWORD pour les contrôler.');
-      console.warn(`[TIC-TiG] Compte admin: ${adminPassword}`);
-      console.warn(`[TIC-TiG] Compte enseignant: ${teacherPassword}`);
+      console.warn('[MonPilot] Base initialisée avec des mots de passe de développement générés. Définissez SEED_ADMIN_PASSWORD et SEED_TEACHER_PASSWORD pour les contrôler.');
+      console.warn(`[MonPilot] Compte admin: ${adminPassword}`);
+      console.warn(`[MonPilot] Compte enseignant: ${teacherPassword}`);
     }
     const adminHash = bcrypt.hashSync(adminPassword, 12);
     const teacherHash = bcrypt.hashSync(teacherPassword, 12);

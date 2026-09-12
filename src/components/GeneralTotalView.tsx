@@ -51,7 +51,7 @@ export const GeneralTotalView: React.FC<GeneralTotalViewProps> = ({
     doc.setTextColor(235, 240, 248);
     doc.setFontSize(45);
     doc.setFont('helvetica', 'bold');
-    doc.text('EduTigTic - CEMINACE', pageWidth / 2, 110, { align: 'center', angle: 25 });
+    doc.text('MonPilot - CEMINACE', pageWidth / 2, 110, { align: 'center', angle: 25 });
     doc.restoreGraphicsState();
 
     // Header

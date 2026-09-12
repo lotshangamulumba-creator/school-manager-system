@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 """
 =============================================================================
-Application : TIC-TiG (Gestion Scolaire CEMINACE - Congo Brazzaville)
+Application : MonPilot School ERP (Gestion Scolaire CEMINACE - Congo Brazzaville)
 Dimensions  : 980 x 683 pixels
-Auteur      : EduTigTic System
+Auteur      : MonPilot School ERP System
 Description : Logiciel de gestion des élèves, des évaluations trimestrielles,
               du calcul des moyennes et classements (par matière et spécialité:
               Sciences, Littérature, EPS), et d'export de bulletins officiels PDF.
@@ -197,12 +197,12 @@ class MidnightButton(tk.Button):
 
 
 # =============================================================================
-# APPLICATION PRINCIPALE : TIC-TiG (980x683 PIXELS)
+# APPLICATION PRINCIPALE : MonPilot School ERP (980x683 PIXELS)
 # =============================================================================
 class TicTigApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("TIC-TiG - Système de Gestion Scolaire CEMINACE (Congo Brazzaville)")
+        self.root.title("MonPilot School ERP - Système de Gestion Scolaire CEMINACE (Congo Brazzaville)")
         # Dimensions strictes : 980 x 683 pixels
         self.root.geometry("980x683")
         self.root.minsize(980, 683)
@@ -287,7 +287,7 @@ class TicTigApp:
 
         lbl_app_name = tk.Label(
             title_box,
-            text="TIC-TiG",
+            text="MonPilot",
             font=("Segoe UI", 15, "bold"),
             fg="#FFFFFF",
             bg=COLOR_MIDNIGHT_LIGHT
@@ -442,7 +442,7 @@ class TicTigApp:
 
         lbl_watermark = tk.Label(
             status_bar,
-            text="TIC-TiG • Système officiel CEMINACE Congo",
+            text="MonPilot • Système officiel CEMINACE Congo",
             font=("Segoe UI", 8, "italic"),
             bg="#E2E8F0",
             fg="#1E3A5F"

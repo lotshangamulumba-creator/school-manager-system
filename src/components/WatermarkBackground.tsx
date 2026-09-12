@@ -44,9 +44,9 @@ export const WatermarkBackground: React.FC = () => {
           <line x1="20" y1="115" x2="140" y2="115" stroke="currentColor" strokeWidth="3" />
         </svg>
 
-        {/* Text Logo EduTigTic */}
+        {/* Text Logo MonPilot */}
         <span className="text-4xl md:text-5xl font-extrabold tracking-wider text-slate-800 uppercase font-mono">
-          EduTigTic
+          MonPilot
         </span>
         <span className="text-xs font-bold tracking-widest text-slate-700 uppercase mt-1">
           Complexe Scolaire Privé CEMINACE • Brazzaville

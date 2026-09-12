@@ -166,7 +166,7 @@ export default function App() {
         );
       }
     } catch (e) {
-      console.warn('[TIC-TiG] Données locales actives:', e);
+      console.warn('[MonPilot] Données locales actives:', e);
     }
   };
 
@@ -304,7 +304,7 @@ export default function App() {
   const handleSaveStudent = (savedStudent: Student) => {
     const targetClassId = savedStudent.classId || classIds[savedStudent.className];
     if (!targetClassId) {
-      console.error('[TIC-TiG] Classe sans ID réel, enregistrement refusé.');
+      console.error('[MonPilot] Classe sans ID réel, enregistrement refusé.');
       return;
     }
     if (studentToEdit) {
@@ -351,7 +351,7 @@ export default function App() {
   const handleImportStudents = (imported: Student[]) => {
     const targetClassId = classIds[currentClass];
     if (!targetClassId) {
-      console.error('[TIC-TiG] Import refusé: classe sans ID réel.');
+      console.error('[MonPilot] Import refusé: classe sans ID réel.');
       return;
     }
     const importedWithClass = imported.map((student) => ({ ...student, classId: targetClassId }));
@@ -375,7 +375,7 @@ export default function App() {
     const subject = subjects.find((candidate) => candidate.name === gradeEditModalData.subjectName);
     const classId = classIds[currentClass];
     if (!subject?.id || !classId) {
-      console.error('[TIC-TiG] Note refusée: référence classe/matière sans ID réel.');
+      console.error('[MonPilot] Note refusée: référence classe/matière sans ID réel.');
       return;
     }
     api.saveBatchGrades({
@@ -408,7 +408,7 @@ export default function App() {
     const gradeList: any[] = [];
     const classId = classIds[currentClass];
     if (!classId) {
-      console.error('[TIC-TiG] Notes refusées: classe sans ID réel.');
+      console.error('[MonPilot] Notes refusées: classe sans ID réel.');
       return;
     }
     currentClassStudents.forEach((student) => {
@@ -451,7 +451,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 text-white">
         <div className="w-12 h-12 rounded-full border-4 border-sky-500/20 border-t-sky-400 animate-spin mb-4" />
-        <h2 className="text-lg font-bold">TIC-TiG Scolaire</h2>
+        <h2 className="text-lg font-bold">MonPilot School ERP</h2>
         <p className="text-xs text-slate-400">Vérification de la session en cours...</p>
       </div>
     );
@@ -524,7 +524,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* Cadre de l'application TIC-TiG */}
+      {/* Cadre de l'application MonPilot School ERP */}
       <div
         className={`relative bg-[#F4F7FB] rounded-xl shadow-2xl border border-slate-700 overflow-hidden flex flex-col transition-all duration-300 ${
           isWindowedMode
@@ -532,7 +532,7 @@ export default function App() {
             : 'w-full max-w-[1020px] min-h-[683px]'
         }`}
       >
-        {/* Filigrane d'application : transparent logo "EduTigTic" avec miniature école en arrière-plan */}
+        {/* Filigrane d'application : transparent logo "MonPilot" avec miniature école en arrière-plan */}
         <WatermarkBackground />
 
         {/* 1. Window Titlebar Desktop */}
@@ -545,7 +545,7 @@ export default function App() {
             </div>
             <div className="flex items-center gap-1.5">
               <GraduationCap className="w-5 h-5 text-sky-300" />
-              <h1 className="font-bold text-sm md:text-base tracking-wide text-white">TIC-TiG</h1>
+              <h1 className="font-bold text-sm md:text-base tracking-wide text-white">MonPilot</h1>
               <span className="text-sky-300 text-xs font-normal hidden sm:inline">
                 • {t.schoolName} ({t.schoolLocation})
               </span>

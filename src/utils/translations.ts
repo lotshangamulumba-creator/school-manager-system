@@ -2,10 +2,10 @@ export type Language = 'fr' | 'en';
 
 export const TRANSLATIONS = {
   fr: {
-    appTitle: 'TIC-TiG',
+    appTitle: 'MonPilot School ERP',
     schoolName: 'Complexe Scolaire Privé CEMINACE',
     schoolLocation: 'Brazzaville, République du Congo',
-    desktopApp: 'Application Bureau TIC-TiG (Tkinter)',
+    desktopApp: 'Application Bureau MonPilot School ERP (Tkinter)',
     fixedWindow: 'Format Fixe 980x683 px',
     fullScreen: 'Mode Plein Écran',
     level: 'Cycle / Niveau',
@@ -82,7 +82,7 @@ export const TRANSLATIONS = {
 
     // Reports tab
     pdfTitle: 'Téléchargement des Bulletins & Rapports PDF (CEMINACE - Brazzaville)',
-    pdfSubtitle: 'Conformes aux directives officielles du Ministère de l’Enseignement de la République du Congo, avec filigrane EduTigTic et classement par spécialité.',
+    pdfSubtitle: 'Conformes aux directives officielles du Ministère de l’Enseignement de la République du Congo, avec filigrane MonPilot et classement par spécialité.',
     singleCombinedPdfTitle: 'Exporter UN SEUL Fichier PDF (Tous les Bulletins Assemblés)',
     singleCombinedPdfDesc: 'Génère et télécharge un document unique multi-pages réunissant tous les bulletins individuels de la classe pour le trimestre sélectionné. Idéal pour l’impression directe en bloc.',
     singleCombinedPdfBtn: 'Télécharger le Fichier PDF Unique (Tous les Bulletins)',
@@ -92,7 +92,7 @@ export const TRANSLATIONS = {
     individualDownloadsTitle: 'Téléchargement unitaire par élève :',
     bulletinBtn: 'Bulletin PDF',
     statusEstablishment: 'Établissement : Complexe Scolaire Privé CEMINACE (Brazzaville, Congo)',
-    statusWatermark: 'Filigrane EduTigTic Actif',
+    statusWatermark: 'Filigrane MonPilot Actif',
 
     // Levels
     primary: 'Primaire',
@@ -100,10 +100,10 @@ export const TRANSLATIONS = {
     lycee: 'Lycée',
   },
   en: {
-    appTitle: 'TIC-TiG',
+    appTitle: 'MonPilot School ERP',
     schoolName: 'CEMINACE Private School Complex',
     schoolLocation: 'Brazzaville, Republic of the Congo',
-    desktopApp: 'TIC-TiG Desktop Application (Tkinter)',
+    desktopApp: 'MonPilot School ERP Desktop Application (Tkinter)',
     fixedWindow: 'Fixed 980x683 px',
     fullScreen: 'Full Screen Mode',
     level: 'Cycle / Level',
@@ -180,7 +180,7 @@ export const TRANSLATIONS = {
 
     // Reports tab
     pdfTitle: 'Download PDF Report Cards & Palmarès (CEMINACE - Brazzaville)',
-    pdfSubtitle: 'Compliant with Republic of the Congo Ministry of Education standards, featuring the EduTigTic watermark and specialty rankings.',
+    pdfSubtitle: 'Compliant with Republic of the Congo Ministry of Education standards, featuring the MonPilot watermark and specialty rankings.',
     singleCombinedPdfTitle: 'Export ONE SINGLE PDF File (All Combined Report Cards)',
     singleCombinedPdfDesc: 'Generates and downloads a single multi-page PDF document containing all individual student report cards for the selected class and trimester. Ideal for bulk printing.',
     singleCombinedPdfBtn: 'Download Single PDF File (All Report Cards Combined)',
@@ -190,7 +190,7 @@ export const TRANSLATIONS = {
     individualDownloadsTitle: 'Individual download per student:',
     bulletinBtn: 'PDF Card',
     statusEstablishment: 'School: CEMINACE Private School Complex (Brazzaville, Congo)',
-    statusWatermark: 'EduTigTic Watermark Active',
+    statusWatermark: 'MonPilot Watermark Active',
 
     // Levels
     primary: 'Primary',
