@@ -301,36 +301,44 @@ export default function App() {
   };
 
   // Sauvegarde d'un élève (Ajout ou Modification)
-  const handleSaveStudent = (savedStudent: Student) => {
+  const handleSaveStudent = async (savedStudent: Student): Promise<void> => {
     const targetClassId = savedStudent.classId || classIds[savedStudent.className];
     if (!targetClassId) {
-      console.error('[MonPilot] Classe sans ID réel, enregistrement refusé.');
-      return;
+      throw new Error('La classe sélectionnée ne possède pas d’identifiant serveur.');
     }
+    const payload = {
+      matricule: savedStudent.matricule,
+      nom: savedStudent.lastName,
+      prenom: savedStudent.firstName,
+      sexe: savedStudent.gender,
+      dateNaissance: savedStudent.dob,
+      parentPhone: savedStudent.parentPhone,
+      classId: targetClassId,
+      className: savedStudent.className,
+    };
     if (studentToEdit) {
-      setStudents((prev) => prev.map((s) => (s.id === savedStudent.id ? savedStudent : s)));
-      api.updateStudent(savedStudent.id, {
-        nom: savedStudent.nom,
-        prenom: savedStudent.prenom,
-        sexe: savedStudent.sexe,
-        dateNaissance: savedStudent.dateNaissance,
-        parentPhone: savedStudent.telephoneParent,
-        classId: targetClassId,
-        className: savedStudent.className,
-      }).catch(console.error);
+      const persisted = await api.updateStudent(savedStudent.id, payload);
+      setStudents((prev) => prev.map((s) => (s.id === savedStudent.id ? {
+        ...savedStudent,
+        id: persisted.id,
+        matricule: persisted.matricule,
+        classId: persisted.classId,
+        className: persisted.className,
+      } : s)));
     } else {
-      setStudents((prev) => [...prev, savedStudent]);
-      api.createStudent({
-        matricule: savedStudent.matricule,
-        nom: savedStudent.nom,
-        prenom: savedStudent.prenom,
-        sexe: savedStudent.sexe,
-        dateNaissance: savedStudent.dateNaissance,
-        parentPhone: savedStudent.telephoneParent,
-        classId: targetClassId,
-        className: savedStudent.className,
-      }).catch(console.error);
-
+      const persisted = await api.createStudent(payload);
+      setStudents((prev) => [...prev, {
+        ...savedStudent,
+        id: persisted.id,
+        matricule: persisted.matricule,
+        classId: persisted.classId,
+        className: persisted.className,
+        nom: persisted.nom,
+        prenom: persisted.prenom,
+        sexe: persisted.sexe,
+        dateNaissance: persisted.dateNaissance,
+        telephoneParent: persisted.parentPhone || '',
+      }]);
     }
     setStudentToEdit(null);
   };
@@ -342,8 +350,11 @@ export default function App() {
         ? 'Êtes-vous sûr de vouloir supprimer cet élève du registre ?'
         : 'Are you sure you want to remove this student from the registry?';
     if (window.confirm(confirmMsg)) {
-      setStudents((prev) => prev.filter((s) => s.id !== studentId));
-      api.deleteStudent(studentId).catch(console.error);
+      api.deleteStudent(studentId).then(() => {
+        setStudents((prev) => prev.filter((s) => s.id !== studentId));
+      }).catch((error) => {
+        window.alert(error instanceof Error ? error.message : 'La suppression a échoué.');
+      });
     }
   };
 
@@ -355,8 +366,9 @@ export default function App() {
       return;
     }
     const importedWithClass = imported.map((student) => ({ ...student, classId: targetClassId }));
-    setStudents((prev) => [...prev, ...importedWithClass]);
-    api.batchImportStudents(importedWithClass, targetClassId, currentClass).catch(console.error);
+    api.batchImportStudents(importedWithClass, targetClassId, currentClass).then(loadBackendData).catch((error) => {
+      window.alert(error instanceof Error ? error.message : 'L’import a échoué.');
+    });
 
   };
 
@@ -544,8 +556,8 @@ export default function App() {
               <span className="w-3 h-3 rounded-full bg-emerald-500/80 inline-block" />
             </div>
             <div className="flex items-center gap-1.5">
-              <GraduationCap className="w-5 h-5 text-sky-300" />
-              <h1 className="font-bold text-sm md:text-base tracking-wide text-white">MonPilot</h1>
+              <img src="/monpilot-cat.svg" className="w-6 h-6 rounded-md bg-white p-0.5" alt="" />
+              <h1 className="font-bold text-sm md:text-base tracking-wide text-white">MonPilot School ERP</h1>
               <span className="text-sky-300 text-xs font-normal hidden sm:inline">
                 • {t.schoolName} ({t.schoolLocation})
               </span>
