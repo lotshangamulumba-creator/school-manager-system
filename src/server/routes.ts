@@ -33,6 +33,40 @@ function rejectMismatchedReference(res: Response, message: string) {
   return res.status(400).json({ error: message });
 }
 
+interface NormalizedStudentInput {
+  matricule?: string;
+  nom?: string;
+  prenom?: string;
+  sexe?: string;
+  dateNaissance?: string;
+  lieuNaissance?: string;
+  parentPhone?: string;
+  classId?: string;
+  className?: string;
+  statut?: boolean;
+}
+
+function normalizeStudentInput(body: Record<string, unknown>): NormalizedStudentInput {
+  return {
+    matricule: typeof body.matricule === 'string' ? body.matricule : undefined,
+    nom: typeof (body.nom ?? body.lastName) === 'string' ? (body.nom ?? body.lastName) as string : undefined,
+    prenom: typeof (body.prenom ?? body.firstName) === 'string' ? (body.prenom ?? body.firstName) as string : undefined,
+    sexe: typeof (body.sexe ?? body.gender) === 'string' ? (body.sexe ?? body.gender) as string : undefined,
+    dateNaissance: typeof (body.dateNaissance ?? body.dateOfBirth ?? body.dob) === 'string'
+      ? (body.dateNaissance ?? body.dateOfBirth ?? body.dob) as string
+      : undefined,
+    lieuNaissance: typeof (body.lieuNaissance ?? body.birthPlace) === 'string'
+      ? (body.lieuNaissance ?? body.birthPlace) as string
+      : undefined,
+    parentPhone: typeof (body.parentPhone ?? body.telephoneParent) === 'string'
+      ? (body.parentPhone ?? body.telephoneParent) as string
+      : undefined,
+    classId: typeof body.classId === 'string' ? body.classId : undefined,
+    className: typeof body.className === 'string' ? body.className : undefined,
+    statut: typeof body.statut === 'boolean' ? body.statut : undefined,
+  };
+}
+
 // ============================================================================
 // 1. AUTHENTIFICATION
 // ============================================================================
@@ -399,8 +433,8 @@ apiRouter.get('/students', authMiddleware, requireRoles(STAFF_ROLES), (req: Auth
 });
 
 apiRouter.post('/students', authMiddleware, requireRoles(STAFF_ROLES), (req: AuthenticatedRequest, res: Response) => {
-  const { matricule, nom, prenom, sexe, dateNaissance, lieuNaissance, parentPhone, classId, className } = req.body;
-  if (!nom || !prenom || !dateNaissance) {
+  const { matricule, nom, prenom, sexe, dateNaissance, lieuNaissance, parentPhone, classId, className } = normalizeStudentInput(req.body);
+  if (typeof nom !== 'string' || !nom.trim() || typeof prenom !== 'string' || !prenom.trim() || typeof dateNaissance !== 'string' || !dateNaissance.trim()) {
     return res.status(400).json({ error: 'Nom, prénom et date de naissance requis.' });
   }
 
@@ -411,16 +445,18 @@ apiRouter.post('/students', authMiddleware, requireRoles(STAFF_ROLES), (req: Aut
   const targetClassId = cls.id;
   const targetClassName = cls.nom;
 
-  const autoMatricule = matricule || `CEM-${String(data.students.length + 1).padStart(3, '0')}`;
+  const autoMatricule = typeof matricule === 'string' && matricule.trim()
+    ? matricule.trim()
+    : `CEM-${String(data.students.length + 1).padStart(3, '0')}`;
   const now = new Date().toISOString();
 
   const newStudent: DbStudent = {
     id: autoMatricule,
     matricule: autoMatricule,
-    nom: nom.toUpperCase(),
-    prenom,
+    nom: nom.trim().toUpperCase(),
+    prenom: prenom.trim(),
     sexe: sexe === 'F' ? 'F' : 'M',
-    dateNaissance,
+    dateNaissance: dateNaissance.trim(),
     lieuNaissance: lieuNaissance || 'Brazzaville',
     parentPhone: parentPhone || '',
     classId: targetClassId,
@@ -430,8 +466,15 @@ apiRouter.post('/students', authMiddleware, requireRoles(STAFF_ROLES), (req: Aut
     updatedAt: now
   };
 
-  data.students.push(newStudent);
-  db.persist();
+  const previousStudents = data.students;
+  try {
+    data.students = [...previousStudents, newStudent];
+    db.persist();
+  } catch (error) {
+    data.students = previousStudents;
+    console.error('Student creation failed and was rolled back:', error);
+    return res.status(500).json({ error: 'La création de l’élève a échoué; aucune donnée n’a été modifiée.' });
+  }
   db.logAudit('CREATE_STUDENT', `Nouvel élève inscrit: ${autoMatricule} - ${nom} ${prenom} (${targetClassName})`, req.user?.id, req.user?.email, req.ip);
 
   res.status(201).json(newStudent);
@@ -441,12 +484,13 @@ apiRouter.put('/students/:id', authMiddleware, requireRoles(STAFF_ROLES), (req: 
   const data = db.getData();
   const student = data.students.find(s => s.id === req.params.id || s.matricule === req.params.id);
   if (!student) return res.status(404).json({ error: 'Élève non trouvé.' });
+  const previousStudent = { ...student };
 
-  const { nom, prenom, sexe, dateNaissance, lieuNaissance, parentPhone, classId, className, statut } = req.body;
-  if (nom) student.nom = nom.toUpperCase();
-  if (prenom) student.prenom = prenom;
+  const { nom, prenom, sexe, dateNaissance, lieuNaissance, parentPhone, classId, className, statut } = normalizeStudentInput(req.body);
+  if (typeof nom === 'string' && nom.trim()) student.nom = nom.trim().toUpperCase();
+  if (typeof prenom === 'string' && prenom.trim()) student.prenom = prenom.trim();
   if (sexe) student.sexe = sexe === 'F' ? 'F' : 'M';
-  if (dateNaissance) student.dateNaissance = dateNaissance;
+  if (typeof dateNaissance === 'string' && dateNaissance.trim()) student.dateNaissance = dateNaissance.trim();
   if (lieuNaissance !== undefined) student.lieuNaissance = lieuNaissance;
   if (parentPhone !== undefined) student.parentPhone = parentPhone;
   if (classId !== undefined || className !== undefined) {
@@ -459,7 +503,13 @@ apiRouter.put('/students/:id', authMiddleware, requireRoles(STAFF_ROLES), (req: 
   if (typeof statut === 'boolean') student.statut = statut;
   student.updatedAt = new Date().toISOString();
 
-  db.persist();
+  try {
+    db.persist();
+  } catch (error) {
+    Object.assign(student, previousStudent);
+    console.error('Student update failed and was rolled back:', error);
+    return res.status(500).json({ error: 'La mise à jour de l’élève a échoué; aucune donnée n’a été modifiée.' });
+  }
   res.json(student);
 });
 

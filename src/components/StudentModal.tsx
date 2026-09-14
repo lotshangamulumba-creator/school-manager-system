@@ -6,7 +6,7 @@ import { X, UserCheck, AlertCircle } from 'lucide-react';
 interface StudentModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (student: Student) => void;
+  onSave: (student: Student) => Promise<void>;
   studentToEdit?: Student | null;
   classList: string[];
   currentClass: string;
@@ -27,6 +27,7 @@ export const StudentModal: React.FC<StudentModalProps> = ({
   const [parentPhone, setParentPhone] = useState('+242 06 ');
   const [className, setClassName] = useState(currentClass);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (studentToEdit) {
@@ -49,7 +50,7 @@ export const StudentModal: React.FC<StudentModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!firstName.trim() || !lastName.trim()) {
       setError('Veuillez renseigner le prénom et le nom de famille.');
@@ -66,8 +67,16 @@ export const StudentModal: React.FC<StudentModalProps> = ({
       className,
     };
 
-    onSave(student);
-    onClose();
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave(student);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Impossible d’enregistrer cet élève.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -83,6 +92,7 @@ export const StudentModal: React.FC<StudentModalProps> = ({
           </div>
           <button
             onClick={onClose}
+            disabled={saving}
             className="text-slate-300 hover:text-white p-1 rounded-md transition-colors"
           >
             <X className="w-5 h-5" />
@@ -188,11 +198,11 @@ export const StudentModal: React.FC<StudentModalProps> = ({
           </div>
 
           <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
-            <MidnightButton type="button" variant="secondary" size="sm" onClick={onClose}>
+            <MidnightButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={saving}>
               Annuler
             </MidnightButton>
-            <MidnightButton type="submit" size="sm">
-              {studentToEdit ? 'Enregistrer les Modifications' : 'Ajouter au Registre'}
+            <MidnightButton type="submit" size="sm" disabled={saving}>
+              {saving ? 'Enregistrement...' : studentToEdit ? 'Enregistrer les Modifications' : 'Ajouter au Registre'}
             </MidnightButton>
           </div>
         </form>
