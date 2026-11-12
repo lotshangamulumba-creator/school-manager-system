@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Student, StudentGrades, Subject } from '../types';
 import { MidnightButton } from './MidnightButton';
-import { X, Calculator, Award, Save, CheckCircle2 } from 'lucide-react';
+import { X, Calculator, Award, Save, CheckCircle2, AlertCircle } from 'lucide-react';
 
 interface BatchGradeModalProps {
   isOpen: boolean;
@@ -13,7 +13,7 @@ interface BatchGradeModalProps {
   onSelectSubject: (sub: Subject) => void;
   trimester: string;
   gradesMap: Record<string, StudentGrades>;
-  onSaveBatch: (updatedGrades: Record<string, StudentGrades>) => void;
+  onSaveBatch: (updatedGrades: Record<string, StudentGrades>) => Promise<void>;
 }
 
 export const BatchGradeModal: React.FC<BatchGradeModalProps> = ({
@@ -32,6 +32,8 @@ export const BatchGradeModal: React.FC<BatchGradeModalProps> = ({
     Record<string, { evalNote: string; dev1: string; dev2: string; comp: string }>
   >({});
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const classStudents = students.filter((s) => s.className === currentClass);
 
@@ -61,6 +63,7 @@ export const BatchGradeModal: React.FC<BatchGradeModalProps> = ({
 
     setLocalRows(initial);
     setSavedSuccess(false);
+    setSaveError(null);
   }, [isOpen, selectedSubject, currentClass, trimester]);
 
   if (!isOpen || !selectedSubject) return null;
@@ -79,7 +82,7 @@ export const BatchGradeModal: React.FC<BatchGradeModalProps> = ({
     }));
   };
 
-  const handleSaveAll = (e: React.FormEvent) => {
+  const handleSaveAll = async (e: React.FormEvent) => {
     e.preventDefault();
     const updates: Record<string, StudentGrades> = {};
 
@@ -113,12 +116,20 @@ export const BatchGradeModal: React.FC<BatchGradeModalProps> = ({
       }
     });
 
-    onSaveBatch(updates);
-    setSavedSuccess(true);
-    setTimeout(() => {
-      setSavedSuccess(false);
-      onClose();
-    }, 900);
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      await onSaveBatch(updates);
+      setSavedSuccess(true);
+      setTimeout(() => {
+        setSavedSuccess(false);
+        onClose();
+      }, 900);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'L’enregistrement des notes a échoué.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -139,6 +150,7 @@ export const BatchGradeModal: React.FC<BatchGradeModalProps> = ({
           </div>
           <button
             onClick={onClose}
+            disabled={isSaving}
             className="text-slate-300 hover:text-white p-1 rounded-md transition-colors"
           >
             <X className="w-5 h-5" />
@@ -151,6 +163,7 @@ export const BatchGradeModal: React.FC<BatchGradeModalProps> = ({
             <span className="text-xs font-semibold text-slate-700">Matière sélectionnée :</span>
             <select
               value={selectedSubject.id}
+              disabled={isSaving}
               onChange={(e) => {
                 const sub = subjects.find((s) => s.id === e.target.value);
                 if (sub) onSelectSubject(sub);
@@ -297,6 +310,13 @@ export const BatchGradeModal: React.FC<BatchGradeModalProps> = ({
             )}
           </div>
 
+          {saveError && (
+            <div role="alert" className="flex items-start gap-2 border-t border-rose-200 bg-rose-50 px-5 py-3 text-xs text-rose-800">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{saveError}</span>
+            </div>
+          )}
+
           {/* Footer with Actions */}
           <div className="bg-slate-50 border-t border-slate-200 px-5 py-3 flex items-center justify-between shrink-0">
             <div className="text-xs text-slate-500">
@@ -311,12 +331,12 @@ export const BatchGradeModal: React.FC<BatchGradeModalProps> = ({
                   Notes enregistrées avec succès !
                 </div>
               )}
-              <MidnightButton type="button" variant="secondary" size="sm" onClick={onClose}>
+              <MidnightButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={isSaving}>
                 Annuler
               </MidnightButton>
-              <MidnightButton type="submit" size="sm">
+              <MidnightButton type="submit" size="sm" disabled={isSaving}>
                 <Save className="w-4 h-4 mr-1.5 inline" />
-                Enregistrer la Classe
+                {isSaving ? 'Enregistrement...' : 'Enregistrer la Classe'}
               </MidnightButton>
             </div>
           </div>

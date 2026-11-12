@@ -34,7 +34,7 @@ import { AdminDashboardView } from './components/AdminDashboardView';
 import { TeacherManagementModal } from './components/TeacherManagementModal';
 import { ClassSubjectModal } from './components/ClassSubjectModal';
 import { AuditBackupModal } from './components/AuditBackupModal';
-import { api, UserProfile } from './services/api';
+import { api, ApiGrade, UserProfile } from './services/api';
 import {
   Users,
   GraduationCap,
@@ -66,6 +66,31 @@ import {
 } from 'lucide-react';
 
 const LEVEL_ORDER: SchoolLevel[] = ['Primaire', 'Collège', 'Lycée'];
+
+function mapApiGradesToState(apiGrades: ApiGrade[]): Record<string, StudentGrades> {
+  const grades: Record<string, StudentGrades> = {};
+
+  apiGrades.forEach((grade) => {
+    const mappedGrade: StudentGrades = {
+      evaluations: grade.evaluations,
+      dev1: grade.dev1,
+      dev2: grade.dev2,
+      composition: grade.composition,
+      observation: grade.observation,
+      eval1: grade.evaluations,
+      eval2: grade.evaluations,
+      dev3: grade.composition,
+    };
+    const trimesterKey = `${grade.studentId}_${grade.subjectName}_${grade.term}`;
+    grades[trimesterKey] = mappedGrade;
+
+    if (grade.term === '1er Trimestre') {
+      grades[`${grade.studentId}_${grade.subjectName}`] = mappedGrade;
+    }
+  });
+
+  return grades;
+}
 
 export default function App() {
   // Langue de l'application (Français / English)
@@ -119,11 +144,14 @@ export default function App() {
   // Synchronisation avec le backend REST API
   const loadBackendData = async () => {
     try {
-      const [backendStudents, backendClasses, backendSubjects] = await Promise.all([
+      const [backendStudents, backendClasses, backendSubjects, backendGrades] = await Promise.all([
         api.getStudents(),
         api.getClasses(),
         api.getSubjects(),
+        api.getGrades({}),
       ]);
+
+      setGrades(mapApiGradesToState(backendGrades));
 
       if (backendStudents.length > 0) {
         setStudents(
@@ -168,6 +196,11 @@ export default function App() {
     } catch (e) {
       console.warn('[MonPilot] Données locales actives:', e);
     }
+  };
+
+  const loadBackendGrades = async () => {
+    const backendGrades = await api.getGrades({});
+    setGrades(mapApiGradesToState(backendGrades));
   };
 
   useEffect(() => {
@@ -373,24 +406,16 @@ export default function App() {
   };
 
   // Sauvegarde des notes saisies pour un élève individuel
-  const handleSaveGrades = (updatedGrades: StudentGrades) => {
-    if (!gradeEditModalData?.student) return;
-    const keyWithTrim = `${gradeEditModalData.student.id}_${gradeEditModalData.subjectName}_${trimester}`;
-    const keyDefault = `${gradeEditModalData.student.id}_${gradeEditModalData.subjectName}`;
-    setGrades((prev) => ({
-      ...prev,
-      [keyWithTrim]: updatedGrades,
-      [keyDefault]: updatedGrades,
-    }));
-
-    // Sauvegarde en base de données sur le serveur
+  const handleSaveGrades = async (updatedGrades: StudentGrades): Promise<void> => {
+    if (!gradeEditModalData?.student) {
+      throw new Error('Aucun élève sélectionné pour enregistrer les notes.');
+    }
     const subject = subjects.find((candidate) => candidate.name === gradeEditModalData.subjectName);
     const classId = classIds[currentClass];
     if (!subject?.id || !classId) {
-      console.error('[MonPilot] Note refusée: référence classe/matière sans ID réel.');
-      return;
+      throw new Error('Impossible d’enregistrer les notes : classe ou matière introuvable.');
     }
-    api.saveBatchGrades({
+    await api.saveBatchGrades({
       grades: [
         {
           studentId: gradeEditModalData.student.id,
@@ -406,28 +431,28 @@ export default function App() {
       classId,
       className: currentClass,
       term: trimester,
-    }).catch(console.error);
+    });
+    try {
+      await loadBackendGrades();
+    } catch (error) {
+      const message = error instanceof Error ? ` ${error.message}` : '';
+      throw new Error(`Les notes sont enregistrées, mais leur rechargement a échoué.${message}`);
+    }
   };
 
   // Sauvegarde en lot des notes pour toute la classe
-  const handleSaveBatchGrades = (batchUpdates: Record<string, StudentGrades>) => {
-    setGrades((prev) => ({
-      ...prev,
-      ...batchUpdates,
-    }));
-
+  const handleSaveBatchGrades = async (batchUpdates: Record<string, StudentGrades>): Promise<void> => {
     // Transformer le lot pour l'API REST
     const gradeList: any[] = [];
     const classId = classIds[currentClass];
     if (!classId) {
-      console.error('[MonPilot] Notes refusées: classe sans ID réel.');
-      return;
+      throw new Error('Impossible d’enregistrer les notes : classe introuvable.');
     }
     currentClassStudents.forEach((student) => {
       subjects.forEach((subj) => {
         const key = `${student.id}_${subj.name}_${trimester}`;
         const keyDef = `${student.id}_${subj.name}`;
-        const g = batchUpdates[key] || batchUpdates[keyDef] || grades[key] || grades[keyDef];
+        const g = batchUpdates[key] || batchUpdates[keyDef];
         if (g) {
           gradeList.push({
             studentId: student.id,
@@ -443,13 +468,19 @@ export default function App() {
       });
     });
 
-    if (gradeList.length > 0) {
-      api.saveBatchGrades({
-        grades: gradeList,
-        classId,
-        className: currentClass,
-        term: trimester,
-      }).catch(console.error);
+    if (gradeList.length === 0) return;
+
+    await api.saveBatchGrades({
+      grades: gradeList,
+      classId,
+      className: currentClass,
+      term: trimester,
+    });
+    try {
+      await loadBackendGrades();
+    } catch (error) {
+      const message = error instanceof Error ? ` ${error.message}` : '';
+      throw new Error(`Les notes sont enregistrées, mais leur rechargement a échoué.${message}`);
     }
   };
 
@@ -1427,6 +1458,7 @@ export default function App() {
         onClose={() => setGradeEditModalData(null)}
         student={gradeEditModalData?.student || null}
         subjectName={gradeEditModalData?.subjectName || ''}
+        trimester={trimester}
         initialGrades={gradeEditModalData?.grades || {}}
         onSave={handleSaveGrades}
       />
