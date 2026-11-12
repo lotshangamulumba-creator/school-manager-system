@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import { SignedSchoolLicense } from './licensing.js';
 
 export interface DbUser {
   id: string;
@@ -110,8 +111,21 @@ export interface DbAuditLog {
   createdAt: string;
 }
 
+export interface LicenseRenewal {
+  id: string;
+  licenseId: string;
+  previousLicenseId?: string;
+  plan: 'monthly' | 'annual';
+  startsAt: string;
+  expiresAt: string;
+  actorUserId: string;
+  actorEmail: string;
+  createdAt: string;
+}
+
 export interface SchoolDatabase {
   version: number;
+  schoolId: string;
   establishmentName: string;
   establishmentCity: string;
   academicYears: DbAcademicYear[];
@@ -122,6 +136,8 @@ export interface SchoolDatabase {
   students: DbStudent[];
   grades: DbGrade[];
   auditLogs: DbAuditLog[];
+  license: SignedSchoolLicense | null;
+  licenseRenewals: LicenseRenewal[];
 }
 
 const DATA_DIR = path.join(process.cwd(), 'database');
@@ -143,14 +159,29 @@ class DatabaseEngine {
 
   private loadOrInit(): SchoolDatabase {
     if (fs.existsSync(DB_FILE)) {
+      let parsed: any;
       try {
         const raw = fs.readFileSync(DB_FILE, 'utf-8');
-        const parsed = JSON.parse(raw);
-        if (parsed && Array.isArray(parsed.users) && Array.isArray(parsed.students)) {
-          return parsed;
-        }
+        parsed = JSON.parse(raw);
       } catch (err) {
         console.error('Error reading database file, rebuilding default seed:', err);
+      }
+      if (parsed && Array.isArray(parsed.users) && Array.isArray(parsed.students)) {
+        let migrated = false;
+        if (typeof parsed.schoolId !== 'string' || parsed.schoolId.length === 0) {
+          parsed.schoolId = crypto.randomUUID();
+          migrated = true;
+        }
+        if (!Object.prototype.hasOwnProperty.call(parsed, 'license')) {
+          parsed.license = null;
+          migrated = true;
+        }
+        if (!Array.isArray(parsed.licenseRenewals)) {
+          parsed.licenseRenewals = [];
+          migrated = true;
+        }
+        if (migrated) this.saveData(parsed);
+        return parsed;
       }
     }
     const seeded = this.generateSeedData();
@@ -369,6 +400,7 @@ class DatabaseEngine {
 
     return {
       version: 1,
+      schoolId: crypto.randomUUID(),
       establishmentName: 'Complexe Scolaire Privé CEMINACE',
       establishmentCity: 'Brazzaville (Congo)',
       academicYears,
@@ -378,7 +410,9 @@ class DatabaseEngine {
       subjects,
       students,
       grades,
-      auditLogs
+      auditLogs,
+      license: null,
+      licenseRenewals: []
     };
   }
 }

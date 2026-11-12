@@ -1,8 +1,15 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { db, DbUser, DbStudent, DbTeacher, DbClass, DbSubject, DbGrade } from './db.js';
 import { authMiddleware, requireRoles, generateToken, AuthenticatedRequest } from './auth.js';
 import { computeClassResults, computeEstablishmentStats } from './academic.js';
+import {
+  getConfiguredLicensePublicKey,
+  getLicenseStatus,
+  SignedSchoolLicense,
+  verifyInstallableLicense,
+} from './licensing.js';
 
 export const apiRouter = Router();
 
@@ -149,6 +156,121 @@ apiRouter.post('/auth/change-password', authMiddleware, (req: AuthenticatedReque
   db.logAudit('CHANGE_PASSWORD', `Changement de mot de passe pour ${user.email}`, user.id, user.email, req.ip);
 
   res.json({ success: true, message: 'Mot de passe mis à jour avec succès.' });
+});
+
+apiRouter.get('/license/status', authMiddleware, (req: AuthenticatedRequest, res: Response) => {
+  const data = db.getData();
+  const status = getLicenseStatus(
+    data.license,
+    data.schoolId,
+    data.establishmentName,
+    getConfiguredLicensePublicKey()
+  );
+  res.json({
+    ...status,
+    renewals: req.user?.role === 'ADMIN' ? data.licenseRenewals : undefined,
+  });
+});
+
+apiRouter.post('/license/install', authMiddleware, requireRoles(['ADMIN']), (req: AuthenticatedRequest, res: Response) => {
+  const submittedLicense = req.body?.license as SignedSchoolLicense | undefined;
+  const data = db.getData();
+  const publicKey = getConfiguredLicensePublicKey();
+  if (!publicKey) {
+    return res.status(503).json({
+      code: 'LICENSE_PUBLIC_KEY_MISSING',
+      error: 'La clé publique de licence n’est pas configurée sur le serveur.',
+    });
+  }
+  if (!submittedLicense || typeof submittedLicense !== 'object' || !submittedLicense.payload) {
+    return res.status(400).json({ error: 'Document de licence invalide.' });
+  }
+
+  if (!verifyInstallableLicense(submittedLicense, data.schoolId, publicKey)) {
+    return res.status(400).json({
+      code: 'LICENSE_NOT_INSTALLABLE',
+      error: 'La licence est invalide, expirée ou ne correspond pas à cette école.',
+    });
+  }
+  const currentLicensePayload = data.license?.payload;
+  if (
+    currentLicensePayload &&
+    (
+      submittedLicense.payload.licenseId === currentLicensePayload.licenseId ||
+      Date.parse(submittedLicense.payload.issuedAt) < Date.parse(currentLicensePayload.issuedAt) ||
+      Date.parse(submittedLicense.payload.expiresAt) <= Date.parse(currentLicensePayload.expiresAt)
+    )
+  ) {
+    return res.status(409).json({
+      code: 'LICENSE_REPLAY_REJECTED',
+      error: 'Cette licence ne renouvelle pas la licence actuellement enregistrée.',
+    });
+  }
+
+  const now = new Date().toISOString();
+  const renewal = {
+    id: `lic-renewal-${crypto.randomUUID()}`,
+    licenseId: submittedLicense.payload.licenseId,
+    previousLicenseId: data.license?.payload?.licenseId,
+    plan: submittedLicense.payload.plan,
+    startsAt: submittedLicense.payload.startsAt,
+    expiresAt: submittedLicense.payload.expiresAt,
+    actorUserId: req.user!.id,
+    actorEmail: req.user!.email,
+    createdAt: now,
+  };
+  const auditEntry = {
+    id: `log-${Date.now()}-${crypto.randomUUID()}`,
+    userId: req.user!.id,
+    userEmail: req.user!.email,
+    action: 'LICENSE_INSTALLED',
+    details: `Licence ${submittedLicense.payload.licenseId} installée (${submittedLicense.payload.plan}, expiration ${submittedLicense.payload.expiresAt}).`,
+    ipAddress: req.ip,
+    createdAt: now,
+  };
+  const previousLicense = data.license;
+  const previousRenewals = data.licenseRenewals;
+  const previousAuditLogs = data.auditLogs;
+
+  try {
+    data.license = submittedLicense;
+    data.licenseRenewals = [renewal, ...previousRenewals];
+    data.auditLogs = [auditEntry, ...previousAuditLogs].slice(0, 500);
+    db.persist();
+  } catch (error) {
+    data.license = previousLicense;
+    data.licenseRenewals = previousRenewals;
+    data.auditLogs = previousAuditLogs;
+    console.error('License installation failed and was rolled back:', error);
+    return res.status(500).json({ error: 'La licence n’a pas pu être enregistrée.' });
+  }
+
+  res.json({
+    success: true,
+    status: getLicenseStatus(data.license, data.schoolId, data.establishmentName, publicKey),
+  });
+});
+
+// Keep authentication, license status, installation, and password recovery available when a license is blocked.
+apiRouter.use(authMiddleware, (req: AuthenticatedRequest, res: Response, next) => {
+  const data = db.getData();
+  const status = getLicenseStatus(
+    data.license,
+    data.schoolId,
+    data.establishmentName,
+    getConfiguredLicensePublicKey()
+  );
+  if (status.state === 'active') return next();
+
+  const code = status.state === 'expired' ? 'LICENSE_EXPIRED' : 'LICENSE_BLOCKED';
+  return res.status(402).json({
+    code,
+    state: status.state,
+    schoolId: status.schoolId,
+    error: status.state === 'expired'
+      ? 'La licence de cette école a expiré.'
+      : 'Une licence valide est nécessaire pour utiliser MonPilot School ERP.',
+  });
 });
 
 // ============================================================================
