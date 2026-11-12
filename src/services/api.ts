@@ -11,6 +11,43 @@ export interface UserProfile {
   telephone?: string;
 }
 
+export type LicensePlan = 'monthly' | 'annual';
+export type LicenseState = 'active' | 'missing' | 'invalid' | 'not_started' | 'expired' | 'unconfigured';
+
+export interface SignedSchoolLicense {
+  payload: {
+    schemaVersion: 1;
+    licenseId: string;
+    schoolId: string;
+    schoolName: string;
+    plan: LicensePlan;
+    startsAt: string;
+    expiresAt: string;
+    issuedAt: string;
+  };
+  signature: string;
+}
+
+export interface LicenseRenewal {
+  id: string;
+  licenseId: string;
+  previousLicenseId?: string;
+  plan: LicensePlan;
+  startsAt: string;
+  expiresAt: string;
+  actorUserId: string;
+  actorEmail: string;
+  createdAt: string;
+}
+
+export interface LicenseStatusResponse {
+  state: LicenseState;
+  schoolId: string;
+  schoolName: string;
+  license: SignedSchoolLicense['payload'] | null;
+  renewals?: LicenseRenewal[];
+}
+
 export interface ApiStudent {
   id: string;
   matricule: string;
@@ -124,6 +161,12 @@ class ApiService {
 
     const data = await response.json().catch(() => ({}));
 
+    if (response.status === 402 && (data.code === 'LICENSE_EXPIRED' || data.code === 'LICENSE_BLOCKED')) {
+      window.dispatchEvent(new CustomEvent('monpilot_license_blocked', {
+        detail: { state: data.state, schoolId: data.schoolId },
+      }));
+    }
+
     if (!response.ok) {
       throw new Error(data.error || `Erreur serveur HTTP ${response.status}`);
     }
@@ -143,6 +186,17 @@ class ApiService {
 
   async getMe(): Promise<UserProfile> {
     return this.request<UserProfile>('/auth/me');
+  }
+
+  async getLicenseStatus(): Promise<LicenseStatusResponse> {
+    return this.request<LicenseStatusResponse>('/license/status');
+  }
+
+  async installLicense(license: SignedSchoolLicense): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>('/license/install', {
+      method: 'POST',
+      body: JSON.stringify({ license }),
+    });
   }
 
   logout() {

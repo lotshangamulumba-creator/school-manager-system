@@ -34,7 +34,15 @@ import { AdminDashboardView } from './components/AdminDashboardView';
 import { TeacherManagementModal } from './components/TeacherManagementModal';
 import { ClassSubjectModal } from './components/ClassSubjectModal';
 import { AuditBackupModal } from './components/AuditBackupModal';
-import { api, ApiGrade, UserProfile } from './services/api';
+import {
+  api,
+  ApiGrade,
+  LicenseState,
+  LicenseStatusResponse,
+  SignedSchoolLicense,
+  UserProfile,
+} from './services/api';
+import { LicenseManagementView } from './components/LicenseManagementView';
 import {
   Users,
   GraduationCap,
@@ -63,6 +71,7 @@ import {
   Database,
   UserCheck,
   School,
+  KeyRound,
 } from 'lucide-react';
 
 const LEVEL_ORDER: SchoolLevel[] = ['Primaire', 'Collège', 'Lycée'];
@@ -122,6 +131,9 @@ export default function App() {
   // Authentification et Utilisateur connecté
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
+  const [licenseStatus, setLicenseStatus] = useState<LicenseStatusResponse | null>(null);
+  const [isLicenseChecking, setIsLicenseChecking] = useState(false);
+  const [showLicenseManagement, setShowLicenseManagement] = useState(false);
 
   // Onglet actif
   const [activeTab, setActiveTab] = useState<
@@ -203,6 +215,28 @@ export default function App() {
     setGrades(mapApiGradesToState(backendGrades));
   };
 
+  const refreshLicenseStatus = async () => {
+    const status = await api.getLicenseStatus();
+    setLicenseStatus(status);
+    return status;
+  };
+
+  const handleInstallLicense = async (license: SignedSchoolLicense) => {
+    await api.installLicense(license);
+    const status = await refreshLicenseStatus();
+    if (status.state === 'active') {
+      await loadBackendData();
+      setShowLicenseManagement(false);
+    }
+  };
+
+  const handleLogout = () => {
+    api.logout();
+    setCurrentUser(null);
+    setLicenseStatus(null);
+    setShowLicenseManagement(false);
+  };
+
   useEffect(() => {
     let isMounted = true;
 
@@ -214,15 +248,30 @@ export default function App() {
       try {
         const token = api.getToken();
         if (token) {
+          let profile: UserProfile | null = null;
           try {
-            const profile = await api.getMe();
-            if (isMounted) {
-              setCurrentUser(profile);
-              await loadBackendData();
-            }
+            profile = await api.getMe();
           } catch {
             api.logout();
             if (isMounted) setCurrentUser(null);
+          }
+          if (profile && isMounted) {
+            setCurrentUser(profile);
+            setIsLicenseChecking(true);
+            try {
+              const status = await refreshLicenseStatus();
+              if (status.state === 'active') await loadBackendData();
+            } catch (error) {
+              console.error('[MonPilot] Vérification de licence impossible:', error);
+              setLicenseStatus({
+                state: 'unconfigured',
+                schoolId: '',
+                schoolName: 'Établissement',
+                license: null,
+              });
+            } finally {
+              if (isMounted) setIsLicenseChecking(false);
+            }
           }
         }
       } catch (e) {
@@ -240,12 +289,39 @@ export default function App() {
     const handleUnauthorized = () => {
       if (isMounted) setCurrentUser(null);
     };
+    const handleLicenseBlocked = (event: Event) => {
+      const state = (event as CustomEvent<{ state: LicenseState }>).detail?.state;
+      if (!state || !isMounted) return;
+      setLicenseStatus((previous) => previous
+        ? { ...previous, state }
+        : { state, schoolId: '', schoolName: 'Établissement', license: null });
+    };
     window.addEventListener('tictig_unauthorized', handleUnauthorized);
+    window.addEventListener('monpilot_license_blocked', handleLicenseBlocked);
     return () => {
       isMounted = false;
       window.removeEventListener('tictig_unauthorized', handleUnauthorized);
+      window.removeEventListener('monpilot_license_blocked', handleLicenseBlocked);
     };
   }, []);
+
+  useEffect(() => {
+    if (licenseStatus?.state !== 'active' || !licenseStatus.license) return;
+    const expiresAt = licenseStatus.license.expiresAt;
+    let timeoutId: number;
+    const checkExpiration = () => {
+      const delay = Date.parse(expiresAt) - Date.now();
+      if (delay > 0) {
+        timeoutId = window.setTimeout(checkExpiration, Math.min(delay, 2_147_483_647));
+      } else {
+        setLicenseStatus((current) => current?.license?.expiresAt === expiresAt
+          ? { ...current, state: 'expired' }
+          : current);
+      }
+    };
+    timeoutId = window.setTimeout(checkExpiration, Math.max(0, Date.parse(expiresAt) - Date.now()));
+    return () => window.clearTimeout(timeoutId);
+  }, [licenseStatus]);
 
   const [gradeEditModalData, setGradeEditModalData] = useState<{
     student: Student | null;
@@ -503,10 +579,58 @@ export default function App() {
   if (!currentUser) {
     return (
       <LoginScreen
-        onLoginSuccess={(user) => {
+        onLoginSuccess={async (user) => {
           setCurrentUser(user);
-          loadBackendData();
+          setIsLicenseChecking(true);
+          try {
+            const status = await refreshLicenseStatus();
+            if (status.state === 'active') await loadBackendData();
+          } catch (error) {
+            console.error('[MonPilot] Vérification de licence impossible:', error);
+            setLicenseStatus({
+              state: 'unconfigured',
+              schoolId: '',
+              schoolName: 'Établissement',
+              license: null,
+            });
+          } finally {
+            setIsLicenseChecking(false);
+          }
         }}
+      />
+    );
+  }
+
+  if (isLicenseChecking || !licenseStatus) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-slate-950 p-4 text-white">
+        <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-sky-500/20 border-t-sky-400" />
+        <h2 className="text-lg font-bold">Vérification de la licence</h2>
+        <p className="text-xs text-slate-300">Connexion sécurisée au serveur MonPilot...</p>
+      </div>
+    );
+  }
+
+  if (licenseStatus.state !== 'active') {
+    return (
+      <LicenseManagementView
+        status={licenseStatus}
+        isAdmin={currentUser.role === 'ADMIN'}
+        blocked
+        onInstall={handleInstallLicense}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  if (showLicenseManagement) {
+    return (
+      <LicenseManagementView
+        status={licenseStatus}
+        isAdmin={currentUser.role === 'ADMIN'}
+        onInstall={handleInstallLicense}
+        onLogout={handleLogout}
+        onBack={() => setShowLicenseManagement(false)}
       />
     );
   }
@@ -642,6 +766,15 @@ export default function App() {
                 >
                   <Database className="w-3.5 h-3.5 text-amber-300" />
                   <span className="hidden sm:inline">Sauvegardes</span>
+                </button>
+
+                <button
+                  onClick={() => setShowLicenseManagement(true)}
+                  className="flex items-center gap-1 text-[11px] font-bold text-emerald-200 bg-[#152942] hover:bg-[#203c61] px-2 py-1 rounded border border-emerald-500/40 transition-colors cursor-pointer"
+                  title="Gérer la licence de l’établissement"
+                >
+                  <KeyRound className="w-3.5 h-3.5 text-emerald-300" />
+                  <span className="hidden sm:inline">Licence</span>
                 </button>
               </div>
             )}
