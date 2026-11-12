@@ -3,7 +3,7 @@ export type Language = 'fr' | 'en';
 export const TRANSLATIONS = {
   fr: {
     appTitle: 'MonPilot School ERP',
-    schoolName: 'Complexe Scolaire Privé CEMINACE',
+    schoolName: 'Complexe Scolaire CEMINACE',
     schoolLocation: 'Brazzaville, République du Congo',
     desktopApp: 'Application Bureau MonPilot School ERP (Tkinter)',
     fixedWindow: 'Format Fixe 980x683 px',
@@ -91,7 +91,7 @@ export const TRANSLATIONS = {
     classPalmaresBtn: 'Télécharger Palmarès PDF',
     individualDownloadsTitle: 'Téléchargement unitaire par élève :',
     bulletinBtn: 'Bulletin PDF',
-    statusEstablishment: 'Établissement : Complexe Scolaire Privé CEMINACE (Brazzaville, Congo)',
+    statusEstablishment: 'Établissement : Complexe Scolaire CEMINACE (Brazzaville, République du Congo)',
     statusWatermark: 'Filigrane MonPilot Actif',
 
     // Levels
@@ -101,7 +101,7 @@ export const TRANSLATIONS = {
   },
   en: {
     appTitle: 'MonPilot School ERP',
-    schoolName: 'CEMINACE Private School Complex',
+    schoolName: 'CEMINACE School Complex',
     schoolLocation: 'Brazzaville, Republic of the Congo',
     desktopApp: 'MonPilot School ERP Desktop Application (Tkinter)',
     fixedWindow: 'Fixed 980x683 px',
@@ -189,7 +189,7 @@ export const TRANSLATIONS = {
     classPalmaresBtn: 'Download Class Palmarès PDF',
     individualDownloadsTitle: 'Individual download per student:',
     bulletinBtn: 'PDF Card',
-    statusEstablishment: 'School: CEMINACE Private School Complex (Brazzaville, Congo)',
+    statusEstablishment: 'School: CEMINACE School Complex (Brazzaville, Republic of the Congo)',
     statusWatermark: 'MonPilot Watermark Active',
 
     // Levels
