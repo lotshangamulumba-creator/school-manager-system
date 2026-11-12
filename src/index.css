@@ -1,1 +1,33 @@
 @import "tailwindcss";
+
+:root {
+  --school-primary: #1e3a5f;
+  --school-secondary: #152942;
+  --school-accent: #38bdf8;
+  --school-on-primary: #ffffff;
+  --school-on-secondary: #ffffff;
+}
+
+#root [class~="bg-[#1E3A5F]"] { background-color: var(--school-primary) !important; }
+#root [class~="bg-[#1E3A5F]"] { color: var(--school-on-primary); }
+#root [class~="bg-[#1E3A5F]"] [class~="text-white"] { color: var(--school-on-primary) !important; }
+#root [class~="text-[#1E3A5F]"] { color: var(--school-primary) !important; }
+#root [class~="border-[#1E3A5F]"] { border-color: var(--school-primary) !important; }
+#root [class~="focus:ring-[#1E3A5F]"]:focus { --tw-ring-color: var(--school-primary) !important; }
+
+#root [class~="bg-[#152942]"] { background-color: var(--school-secondary) !important; }
+#root [class~="bg-[#152942]"] { color: var(--school-on-secondary); }
+#root [class~="bg-[#152942]"] [class~="text-white"] { color: var(--school-on-secondary) !important; }
+#root [class~="border-[#152942]"] { border-color: var(--school-secondary) !important; }
+#root [class~="hover:bg-[#203c61]"]:hover { background-color: color-mix(in srgb, var(--school-secondary) 78%, white) !important; }
+
+#root [class~="from-[#0C1E36]"] { --tw-gradient-from: var(--school-secondary) var(--tw-gradient-from-position); --tw-gradient-to: color-mix(in srgb, var(--school-secondary) 0%, transparent) var(--tw-gradient-to-position); }
+#root [class~="via-[#152F52]"] { --tw-gradient-via: var(--school-secondary); }
+#root [class~="to-[#0C1E36]"] { --tw-gradient-to: var(--school-secondary) var(--tw-gradient-to-position); }
+#root [class~="from-[#254C7B]"] { --tw-gradient-from: var(--school-primary) var(--tw-gradient-from-position); --tw-gradient-to: color-mix(in srgb, var(--school-primary) 0%, transparent) var(--tw-gradient-to-position); }
+#root [class~="to-[#18365D]"] { --tw-gradient-to: var(--school-secondary) var(--tw-gradient-to-position); }
+#root [class~="from-[#254C7B]"] [class~="text-white"] { color: var(--school-on-primary) !important; }
+
+#root [class~="bg-sky-500"] { background-color: var(--school-accent) !important; }
+#root [class~="border-sky-400"] { border-color: var(--school-accent) !important; }
+#root [class~="text-sky-300"] { color: var(--school-accent) !important; }

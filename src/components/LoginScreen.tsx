@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import { LogIn, AlertCircle, KeyRound, Mail, CheckCircle2 } from 'lucide-react';
 import { api, UserProfile } from '../services/api';
+import { DEFAULT_SCHOOL_PROFILE } from '../data/schoolProfile';
+import { SchoolProfile } from '../types';
 
 interface LoginScreenProps {
   onLoginSuccess: (user: UserProfile) => void;
+  schoolProfile?: SchoolProfile;
 }
 
-export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
+export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, schoolProfile = DEFAULT_SCHOOL_PROFILE }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -41,15 +44,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         {/* Header Branding */}
         <div className="text-center mb-6">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-slate-100 border border-slate-200 mb-3">
-            <img src="/monpilot-cat.svg" className="w-11 h-11" alt="MonPilot cat mark" />
+            <img src={schoolProfile.logoDataUrl || '/monpilot-cat.svg'} className="h-11 w-11 object-contain" alt={`Logo de ${schoolProfile.schoolName}`} />
           </div>
           <h1 className="text-2xl font-black text-slate-950 tracking-tight">MonPilot School ERP</h1>
           <p className="text-xs text-slate-600 font-semibold mt-1">
             School ERP
           </p>
           <p className="text-xs text-slate-500 font-semibold mt-1">
-            Complexe Scolaire Privé CEMINACE
+            {schoolProfile.schoolName}
           </p>
+          <p className="text-[11px] text-slate-500">{schoolProfile.city}</p>
           <p className="text-[11px] text-slate-500">
             Plateforme Centralisée de Gestion des Notes & Bulletins
           </p>
@@ -74,7 +78,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="nom@ceminace.cg"
+                placeholder="nom@ecole.cg"
                 className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-10 pr-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition-all"
               />
             </div>

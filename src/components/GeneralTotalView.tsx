@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { EstablishmentSpecialtyStat, SchoolLevel } from '../types';
+import { EstablishmentSpecialtyStat, SchoolLevel, SchoolProfile } from '../types';
 import { MidnightButton } from './MidnightButton';
+import { DEFAULT_SCHOOL_PROFILE } from '../data/schoolProfile';
 import {
   Trophy,
   Award,
@@ -14,12 +15,14 @@ import {
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { contrastingTextColor, hexToRgb } from '../utils/colors';
 
 interface GeneralTotalViewProps {
   stats: EstablishmentSpecialtyStat;
   trimester: string;
   onCycleTrimester: () => void;
   isFrench: boolean;
+  schoolProfile?: SchoolProfile;
 }
 
 export const GeneralTotalView: React.FC<GeneralTotalViewProps> = ({
@@ -27,6 +30,7 @@ export const GeneralTotalView: React.FC<GeneralTotalViewProps> = ({
   trimester,
   onCycleTrimester,
   isFrench,
+  schoolProfile = DEFAULT_SCHOOL_PROFILE,
 }) => {
   const [selectedLevelFilter, setSelectedLevelFilter] = useState<'ALL' | SchoolLevel>('ALL');
 
@@ -45,25 +49,32 @@ export const GeneralTotalView: React.FC<GeneralTotalViewProps> = ({
   const handleExportPdf = () => {
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const pageWidth = doc.internal.pageSize.getWidth();
+    const primaryColor = hexToRgb(schoolProfile.primaryColor);
+    const primaryTextColor = contrastingTextColor(schoolProfile.primaryColor);
 
     // Watermark
     doc.saveGraphicsState();
     doc.setTextColor(235, 240, 248);
     doc.setFontSize(45);
     doc.setFont('helvetica', 'bold');
-    doc.text('MonPilot - CEMINACE', pageWidth / 2, 110, { align: 'center', angle: 25 });
+    doc.text(`MonPilot - ${schoolProfile.schoolName}`, pageWidth / 2, 110, { align: 'center', angle: 25 });
     doc.restoreGraphicsState();
 
     // Header
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(14);
-    doc.setTextColor(30, 58, 95);
-    doc.text('COMPLEXE SCOLAIRE PRIVÉ CEMINACE - BRAZZAVILLE', 14, 15);
+    doc.setTextColor(...primaryColor);
+    doc.text(`${schoolProfile.schoolName.toUpperCase()} - ${schoolProfile.city.toUpperCase()}`, 14, 15);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     doc.setTextColor(71, 85, 105);
     doc.text('RÉPUBLIQUE DU CONGO • MINISTÈRE DE L’ENSEIGNEMENT', 14, 20);
+    if (schoolProfile.logoDataUrl?.startsWith('data:image/png;')) {
+      doc.addImage(schoolProfile.logoDataUrl, 'PNG', pageWidth - 34, 5, 18, 18);
+    } else if (schoolProfile.logoDataUrl?.startsWith('data:image/jpeg;')) {
+      doc.addImage(schoolProfile.logoDataUrl, 'JPEG', pageWidth - 34, 5, 18, 18);
+    }
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
@@ -133,8 +144,8 @@ export const GeneralTotalView: React.FC<GeneralTotalViewProps> = ({
       body: tableRows,
       theme: 'grid',
       headStyles: {
-        fillColor: [30, 58, 95],
-        textColor: 255,
+        fillColor: primaryColor,
+        textColor: primaryTextColor,
         fontSize: 8.5,
         halign: 'center',
         fontStyle: 'bold',
@@ -156,18 +167,19 @@ export const GeneralTotalView: React.FC<GeneralTotalViewProps> = ({
       didParseCell: (data) => {
         const raw0 = String(data.row.raw[0] || '');
         if (raw0.includes('GRAND TOTAL')) {
-          data.cell.styles.fillColor = [30, 58, 95];
-          data.cell.styles.textColor = [255, 255, 255];
+          data.cell.styles.fillColor = primaryColor;
+          data.cell.styles.textColor = primaryTextColor;
           data.cell.styles.fontStyle = 'bold';
         } else if (raw0.includes('TOTAL / MOYENNE')) {
           data.cell.styles.fillColor = [224, 235, 250];
-          data.cell.styles.textColor = [30, 58, 95];
+          data.cell.styles.textColor = primaryColor;
           data.cell.styles.fontStyle = 'bold';
         }
       },
     });
 
-    doc.save(`CEMINACE_Total_General_Specialites_${trimester.replace(/\s+/g, '_')}.pdf`);
+    const schoolFileName = schoolProfile.schoolName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '_');
+    doc.save(`${schoolFileName}_Total_General_Specialites_${trimester.replace(/\s+/g, '_')}.pdf`);
   };
 
   return (
@@ -219,7 +231,7 @@ export const GeneralTotalView: React.FC<GeneralTotalViewProps> = ({
           <div className="flex items-center justify-between text-sky-300 text-xs font-semibold mb-2">
             <span className="flex items-center gap-1.5">
               <School className="w-4 h-4" />
-              CEMINACE Global
+              {schoolProfile.schoolName}
             </span>
             <span className="text-[11px] bg-sky-900/80 px-2 py-0.5 rounded">
               {stats.totalStudents} élèves
@@ -427,14 +439,14 @@ export const GeneralTotalView: React.FC<GeneralTotalViewProps> = ({
           </div>
         ))}
 
-        {/* GRAND TOTAL GÉNÉRAL ÉTABLISSEMENT CEMINACE */}
+        {/* GRAND TOTAL GÉNÉRAL ÉTABLISSEMENT */}
         <div className="bg-[#1E3A5F] text-white rounded-xl p-5 shadow-lg border border-slate-700">
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-600/60 pb-4 mb-4">
             <div>
               <h3 className="text-base md:text-lg font-black tracking-wide text-sky-200">
                 {isFrench
-                  ? 'GRAND TOTAL GÉNÉRAL • COMPLEXE SCOLAIRE PRIVÉ CEMINACE'
-                  : 'GRAND GENERAL TOTAL • CEMINACE PRIVATE SCHOOL COMPLEX'}
+                  ? `GRAND TOTAL GÉNÉRAL • ${schoolProfile.schoolName.toUpperCase()}`
+                  : `GRAND GENERAL TOTAL • ${schoolProfile.schoolName.toUpperCase()}`}
               </h3>
               <p className="text-xs text-sky-100">
                 Consolidation globale de tous les niveaux scolaires (Primaire, Collège, Lycée) pour le{' '}

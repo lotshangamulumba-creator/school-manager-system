@@ -5,6 +5,7 @@ import {
   Student,
   StudentGrades,
   StudentTrimesterResult,
+  SchoolProfile,
 } from './types';
 import {
   CEMINACE_LEVELS,
@@ -34,6 +35,7 @@ import { AdminDashboardView } from './components/AdminDashboardView';
 import { TeacherManagementModal } from './components/TeacherManagementModal';
 import { ClassSubjectModal } from './components/ClassSubjectModal';
 import { AuditBackupModal } from './components/AuditBackupModal';
+import { SchoolSettingsModal } from './components/SchoolSettingsModal';
 import {
   api,
   ApiGrade,
@@ -43,6 +45,8 @@ import {
   UserProfile,
 } from './services/api';
 import { LicenseManagementView } from './components/LicenseManagementView';
+import { DEFAULT_SCHOOL_PROFILE } from './data/schoolProfile';
+import { contrastingTextHex } from './utils/colors';
 import {
   Users,
   GraduationCap,
@@ -72,6 +76,7 @@ import {
   UserCheck,
   School,
   KeyRound,
+  Settings2,
 } from 'lucide-react';
 
 const LEVEL_ORDER: SchoolLevel[] = ['Primaire', 'Collège', 'Lycée'];
@@ -134,6 +139,7 @@ export default function App() {
   const [licenseStatus, setLicenseStatus] = useState<LicenseStatusResponse | null>(null);
   const [isLicenseChecking, setIsLicenseChecking] = useState(false);
   const [showLicenseManagement, setShowLicenseManagement] = useState(false);
+  const [schoolProfile, setSchoolProfile] = useState<SchoolProfile>(DEFAULT_SCHOOL_PROFILE);
 
   // Onglet actif
   const [activeTab, setActiveTab] = useState<
@@ -152,40 +158,41 @@ export default function App() {
   const [isTeacherModalOpen, setIsTeacherModalOpen] = useState(false);
   const [isClassSubjectModalOpen, setIsClassSubjectModalOpen] = useState(false);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
+  const [isSchoolSettingsOpen, setIsSchoolSettingsOpen] = useState(false);
 
   // Synchronisation avec le backend REST API
   const loadBackendData = async () => {
     try {
-      const [backendStudents, backendClasses, backendSubjects, backendGrades] = await Promise.all([
+      const [backendStudents, backendClasses, backendSubjects, backendGrades, backendSchoolProfile] = await Promise.all([
         api.getStudents(),
         api.getClasses(),
         api.getSubjects(),
         api.getGrades({}),
+        api.getSchoolProfile(),
       ]);
 
       setGrades(mapApiGradesToState(backendGrades));
+      setSchoolProfile(backendSchoolProfile);
 
-      if (backendStudents.length > 0) {
-        setStudents(
-          backendStudents.map((bs) => ({
-            id: bs.id,
-            firstName: bs.prenom,
-            lastName: bs.nom,
-            dob: bs.dateNaissance,
-            gender: bs.sexe,
-            parentPhone: bs.parentPhone || '',
-            matricule: bs.matricule,
-            nom: bs.nom,
-            prenom: bs.prenom,
-            sexe: bs.sexe,
-            dateNaissance: bs.dateNaissance,
-            lieuNaissance: bs.lieuNaissance || 'Brazzaville',
-            telephoneParent: bs.parentPhone || '',
-            className: bs.className || '6ème A',
-            classId: bs.classId,
-          }))
-        );
-      }
+      setStudents(
+        backendStudents.map((bs) => ({
+          id: bs.id,
+          firstName: bs.prenom,
+          lastName: bs.nom,
+          dob: bs.dateNaissance,
+          gender: bs.sexe,
+          parentPhone: bs.parentPhone || '',
+          matricule: bs.matricule,
+          nom: bs.nom,
+          prenom: bs.prenom,
+          sexe: bs.sexe,
+          dateNaissance: bs.dateNaissance,
+          lieuNaissance: bs.lieuNaissance || 'Brazzaville',
+          telephoneParent: bs.parentPhone || '',
+          className: bs.className || '6ème A',
+          classId: bs.classId,
+        }))
+      );
 
       if (backendClasses.length > 0) {
         const classNames = backendClasses.map((c) => c.nom);
@@ -221,6 +228,12 @@ export default function App() {
     return status;
   };
 
+  const handleSaveSchoolProfile = async (profile: SchoolProfile) => {
+    const savedProfile = await api.updateSchoolProfile(profile);
+    setSchoolProfile(savedProfile);
+    setLicenseStatus((current) => current ? { ...current, schoolName: savedProfile.schoolName } : current);
+  };
+
   const handleInstallLicense = async (license: SignedSchoolLicense) => {
     await api.installLicense(license);
     const status = await refreshLicenseStatus();
@@ -246,6 +259,12 @@ export default function App() {
       }, 2500);
 
       try {
+        try {
+          const profile = await api.getSchoolProfile();
+          if (isMounted) setSchoolProfile(profile);
+        } catch (error) {
+          console.warn('[MonPilot] Profil établissement par défaut actif:', error);
+        }
         const token = api.getToken();
         if (token) {
           let profile: UserProfile | null = null;
@@ -322,6 +341,17 @@ export default function App() {
     timeoutId = window.setTimeout(checkExpiration, Math.max(0, Date.parse(expiresAt) - Date.now()));
     return () => window.clearTimeout(timeoutId);
   }, [licenseStatus]);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty('--school-primary', schoolProfile.primaryColor);
+    document.documentElement.style.setProperty('--school-secondary', schoolProfile.secondaryColor);
+    document.documentElement.style.setProperty('--school-accent', schoolProfile.accentColor);
+    document.documentElement.style.setProperty('--school-on-primary', contrastingTextHex(schoolProfile.primaryColor));
+    document.documentElement.style.setProperty('--school-on-secondary', contrastingTextHex(schoolProfile.secondaryColor));
+    document.title = `${schoolProfile.schoolName} · MonPilot School ERP`;
+    const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    if (favicon) favicon.href = schoolProfile.logoDataUrl || '/favicon.svg';
+  }, [schoolProfile]);
 
   const [gradeEditModalData, setGradeEditModalData] = useState<{
     student: Student | null;
@@ -579,6 +609,7 @@ export default function App() {
   if (!currentUser) {
     return (
       <LoginScreen
+        schoolProfile={schoolProfile}
         onLoginSuccess={async (user) => {
           setCurrentUser(user);
           setIsLicenseChecking(true);
@@ -696,7 +727,7 @@ export default function App() {
         }`}
       >
         {/* Filigrane d'application : transparent logo "MonPilot" avec miniature école en arrière-plan */}
-        <WatermarkBackground />
+        <WatermarkBackground schoolProfile={schoolProfile} />
 
         {/* 1. Window Titlebar Desktop */}
         <div className="relative z-10 bg-[#1E3A5F] text-white px-4 py-2.5 flex flex-col gap-2 border-b border-[#152942] select-none">
@@ -707,10 +738,10 @@ export default function App() {
               <span className="w-3 h-3 rounded-full bg-emerald-500/80 inline-block" />
             </div>
             <div className="flex min-w-0 items-center gap-1.5">
-              <img src="/monpilot-cat.svg" className="w-6 h-6 rounded-md bg-white p-0.5" alt="" />
+              <img src={schoolProfile.logoDataUrl || '/monpilot-cat.svg'} className="h-6 w-6 rounded-md bg-white p-0.5 object-contain" alt="" />
               <h1 className="shrink-0 font-bold text-sm md:text-base tracking-wide text-white">MonPilot School ERP</h1>
               <span className="hidden whitespace-nowrap text-sky-300 text-xs font-normal md:inline">
-                • {t.schoolName} ({t.schoolLocation})
+                • {schoolProfile.schoolName} ({schoolProfile.city})
               </span>
             </div>
           </div>
@@ -737,6 +768,15 @@ export default function App() {
             {/* Outils d'administration pour l'ADMIN */}
             {currentUser?.role === 'ADMIN' && (
               <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setIsSchoolSettingsOpen(true)}
+                  className="flex items-center gap-1 text-[11px] font-bold text-sky-200 bg-[#152942] hover:bg-[#203c61] px-2 py-1 rounded border border-[#234574] transition-colors cursor-pointer"
+                  title="Personnaliser l’identité et les bulletins de l’école"
+                >
+                  <Settings2 className="w-3.5 h-3.5 text-sky-300" />
+                  <span className="hidden sm:inline">Établissement</span>
+                </button>
+
                 <button
                   onClick={() => setIsTeacherModalOpen(true)}
                   className="flex items-center gap-1 text-[11px] font-bold text-sky-200 bg-[#152942] hover:bg-[#203c61] px-2 py-1 rounded border border-[#234574] transition-colors cursor-pointer"
@@ -1387,7 +1427,8 @@ export default function App() {
                         currentClass,
                         level,
                         trimester,
-                        language
+                        language,
+                        schoolProfile
                       )
                     }
                     icon={<FileDown className="w-4 h-4" />}
@@ -1427,7 +1468,7 @@ export default function App() {
                     <MidnightButton
                       size="sm"
                       onClick={() =>
-                        generateClassResultsPDF(classResults, currentClass, level, trimester, language)
+                        generateClassResultsPDF(classResults, currentClass, level, trimester, language, schoolProfile)
                       }
                       icon={<Printer className="w-4 h-4" />}
                     >
@@ -1452,7 +1493,8 @@ export default function App() {
                           currentClass,
                           level,
                           trimester,
-                          language
+                          language,
+                          schoolProfile
                         )
                       }
                       icon={<FileStack className="w-4 h-4" />}
@@ -1502,7 +1544,8 @@ export default function App() {
                                     level,
                                     trimester,
                                     classResults.length,
-                                    language
+                                    language,
+                                    schoolProfile
                                   )
                                 }
                                 icon={<FileDown className="w-3.5 h-3.5" />}
@@ -1527,6 +1570,7 @@ export default function App() {
               trimester={trimester}
               onCycleTrimester={handleCycleTrimester}
               isFrench={language === 'fr'}
+              schoolProfile={schoolProfile}
             />
           )}
         </div>
@@ -1534,8 +1578,8 @@ export default function App() {
         {/* 5. Barre de Statut Inférieure */}
         <div className="relative z-10 bg-slate-200 border-t border-slate-300 px-3 py-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px] text-slate-600">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
-            <span className="max-w-full truncate whitespace-nowrap" title={t.statusEstablishment}>
-              {t.statusEstablishment}
+            <span className="max-w-full truncate whitespace-nowrap" title={`${schoolProfile.schoolName} (${schoolProfile.city})`}>
+              {language === 'fr' ? 'Établissement' : 'School'} : {schoolProfile.schoolName} ({schoolProfile.city})
             </span>
             <span>•</span>
             <span className="whitespace-nowrap">
@@ -1622,6 +1666,13 @@ export default function App() {
         isOpen={isAuditModalOpen}
         onClose={() => setIsAuditModalOpen(false)}
         onDataRestored={loadBackendData}
+      />
+
+      <SchoolSettingsModal
+        isOpen={isSchoolSettingsOpen}
+        profile={schoolProfile}
+        onClose={() => setIsSchoolSettingsOpen(false)}
+        onSave={handleSaveSchoolProfile}
       />
     </div>
   );

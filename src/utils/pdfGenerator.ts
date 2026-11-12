@@ -1,19 +1,28 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { StudentTrimesterResult, SchoolLevel } from '../types';
+import { SchoolProfile, StudentTrimesterResult, SchoolLevel } from '../types';
 import { Language } from './translations';
+import { DEFAULT_SCHOOL_PROFILE } from '../data/schoolProfile';
+import { contrastingTextColor, hexToRgb } from './colors';
+
+function addSchoolLogo(doc: jsPDF, profile: SchoolProfile, x: number, y: number, size: number) {
+  if (!profile.logoDataUrl) return;
+  const format = profile.logoDataUrl.startsWith('data:image/png;') ? 'PNG' :
+    profile.logoDataUrl.startsWith('data:image/jpeg;') ? 'JPEG' : null;
+  if (format) doc.addImage(profile.logoDataUrl, format, x, y, size, size);
+}
 
 /**
  * Helper to render the watermark on the current page
  */
-function drawWatermark(doc: jsPDF, pageWidth: number) {
+function drawWatermark(doc: jsPDF, pageWidth: number, schoolProfile: SchoolProfile) {
   doc.saveGraphicsState();
   doc.setTextColor(230, 236, 245);
   doc.setFontSize(54);
   doc.setFont('helvetica', 'bold');
   doc.text('MonPilot', pageWidth / 2, 140, { align: 'center', angle: 45 });
   doc.setFontSize(14);
-  doc.text('CEMINACE - BRAZZAVILLE', pageWidth / 2, 160, { align: 'center', angle: 45 });
+  doc.text(`${schoolProfile.schoolName} - ${schoolProfile.city}`, pageWidth / 2, 160, { align: 'center', angle: 45 });
   doc.restoreGraphicsState();
 }
 
@@ -27,14 +36,18 @@ export function renderStudentBulletinPage(
   level: SchoolLevel,
   trimester: string,
   classTotalStudents: number,
-  lang: Language = 'fr'
+  lang: Language = 'fr',
+  schoolProfile: SchoolProfile = DEFAULT_SCHOOL_PROFILE
 ) {
   const pageWidth = doc.internal.pageSize.getWidth();
 
   // Watermark MonPilot
-  drawWatermark(doc, pageWidth);
+  drawWatermark(doc, pageWidth, schoolProfile);
 
   const isEn = lang === 'en';
+  const primaryColor = hexToRgb(schoolProfile.primaryColor);
+  const primaryTextColor = contrastingTextColor(schoolProfile.primaryColor);
+  const secondaryTextColor = contrastingTextColor(schoolProfile.secondaryColor);
 
   // Official Header - République du Congo
   doc.setFont('helvetica', 'bold');
@@ -44,7 +57,7 @@ export function renderStudentBulletinPage(
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(7.5);
   doc.setTextColor(100, 116, 139);
-  doc.text(isEn ? 'Unity - Work - Progress' : 'Unité - Travail - Progrès', 14, 18);
+  doc.text(schoolProfile.motto || (isEn ? 'Unity - Work - Progress' : 'Unité - Travail - Progrès'), 14, 18);
   doc.text(
     isEn
       ? 'MINISTRY OF PRESCHOOL, PRIMARY, SECONDARY'
@@ -61,35 +74,31 @@ export function renderStudentBulletinPage(
   // School Header
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
-  doc.setTextColor(30, 58, 95);
-  doc.text('COMPLEXE SCOLAIRE PRIVÉ CEMINACE', pageWidth - 14, 14, { align: 'right' });
+  doc.setTextColor(...primaryColor);
+  doc.setFontSize(Math.min(10, Math.max(6, 90 / Math.max(doc.getTextWidth(schoolProfile.schoolName), 1) * 10)));
+  doc.text(schoolProfile.schoolName.toUpperCase(), pageWidth - 14, 14, { align: 'right', maxWidth: 90 });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(100, 116, 139);
-  doc.text(
-    isEn
-      ? 'Ministerial Accreditation • General Education'
-      : 'Agrément Ministériel • Enseignement Général',
-    pageWidth - 14,
-    18,
-    { align: 'right' }
-  );
-  doc.text('Brazzaville - République du Congo', pageWidth - 14, 22, { align: 'right' });
+  doc.text(schoolProfile.address || schoolProfile.city, pageWidth - 14, 18, { align: 'right', maxWidth: 90 });
+  const contactLine = [schoolProfile.phone, schoolProfile.email].filter(Boolean).join(' • ');
+  if (contactLine) doc.text(contactLine, pageWidth - 14, 22, { align: 'right', maxWidth: 90 });
   doc.text(isEn ? 'Academic Year: 2025 - 2026' : 'Année Scolaire : 2025 - 2026', pageWidth - 14, 26, {
-    align: 'right',
+    align: 'right', maxWidth: 90,
   });
+  addSchoolLogo(doc, schoolProfile, pageWidth / 2 - 7, 9, 14);
 
   // Divider Line
-  doc.setDrawColor(30, 58, 95);
+  doc.setDrawColor(...primaryColor);
   doc.setLineWidth(0.7);
   doc.line(14, 29, pageWidth - 14, 29);
 
   // Bulletin Title Box
-  doc.setFillColor(30, 58, 95);
+  doc.setFillColor(...primaryColor);
   doc.roundedRect(14, 32, pageWidth - 28, 10, 1.5, 1.5, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
-  doc.setTextColor(255, 255, 255);
+  doc.setTextColor(...primaryTextColor);
   const titleText = isEn
     ? `STUDENT REPORT CARD - ${trimester.toUpperCase()}`
     : `BULLETIN DE NOTES DU ${trimester.toUpperCase()}`;
@@ -149,8 +158,8 @@ export function renderStudentBulletinPage(
     body: subjectRows,
     theme: 'grid',
     headStyles: {
-      fillColor: [30, 58, 95],
-      textColor: [255, 255, 255],
+      fillColor: primaryColor,
+      textColor: primaryTextColor,
       fontStyle: 'bold',
       fontSize: 8,
       halign: 'center',
@@ -218,8 +227,8 @@ export function renderStudentBulletinPage(
     body: summaryRows,
     theme: 'grid',
     headStyles: {
-      fillColor: [51, 65, 85],
-      textColor: [255, 255, 255],
+      fillColor: hexToRgb(schoolProfile.secondaryColor),
+      textColor: secondaryTextColor,
       fontSize: 7.5,
       halign: 'center',
     },
@@ -247,7 +256,7 @@ export function renderStudentBulletinPage(
   doc.text(isEn ? 'Parents / Guardians Signature' : 'Signature des Parents / Tuteurs', pageWidth / 2, sigY, {
     align: 'center',
   });
-  doc.text(isEn ? 'CEMINACE Administration' : 'La Direction CEMINACE (Brazzaville)', pageWidth - 25, sigY, {
+  doc.text(schoolProfile.principalName, pageWidth - 25, sigY, {
     align: 'right',
   });
 
@@ -256,7 +265,7 @@ export function renderStudentBulletinPage(
   doc.setTextColor(148, 163, 184);
   doc.text(isEn ? 'Observation & Stamp' : 'Observation & Visa', 32, sigY + 16);
   doc.text(isEn ? 'Date & Signature' : 'Date & Signature', pageWidth / 2, sigY + 16, { align: 'center' });
-  doc.text(isEn ? 'School Principal' : 'Le Directeur Général', pageWidth - 32, sigY + 16, { align: 'right' });
+  doc.text(schoolProfile.directorOfStudiesName, pageWidth - 32, sigY + 16, { align: 'right' });
 }
 
 /**
@@ -268,7 +277,8 @@ export function generateStudentBulletinPDF(
   level: SchoolLevel,
   trimester: string,
   classTotalStudents: number,
-  lang: Language = 'fr'
+  lang: Language = 'fr',
+  schoolProfile: SchoolProfile = DEFAULT_SCHOOL_PROFILE
 ) {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -276,7 +286,7 @@ export function generateStudentBulletinPDF(
     format: 'a4',
   });
 
-  renderStudentBulletinPage(doc, res, className, level, trimester, classTotalStudents, lang);
+  renderStudentBulletinPage(doc, res, className, level, trimester, classTotalStudents, lang, schoolProfile);
 
   const fileName = `Bulletin_${res.student.lastName}_${res.student.firstName}_${className.replace(/\s+/g, '_')}_${trimester.replace(/\s+/g, '_')}.pdf`;
   doc.save(fileName);
@@ -291,7 +301,8 @@ export function generateAllClassBulletinsCombinedPDF(
   className: string,
   level: SchoolLevel,
   trimester: string,
-  lang: Language = 'fr'
+  lang: Language = 'fr',
+  schoolProfile: SchoolProfile = DEFAULT_SCHOOL_PROFILE
 ) {
   if (!results || results.length === 0) return;
 
@@ -305,7 +316,7 @@ export function generateAllClassBulletinsCombinedPDF(
     if (index > 0) {
       doc.addPage();
     }
-    renderStudentBulletinPage(doc, res, className, level, trimester, results.length, lang);
+    renderStudentBulletinPage(doc, res, className, level, trimester, results.length, lang, schoolProfile);
   });
 
   const fileName =
@@ -324,7 +335,8 @@ export function generateClassResultsPDF(
   className: string,
   level: SchoolLevel,
   trimester: string,
-  lang: Language = 'fr'
+  lang: Language = 'fr',
+  schoolProfile: SchoolProfile = DEFAULT_SCHOOL_PROFILE
 ) {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -334,9 +346,11 @@ export function generateClassResultsPDF(
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const isEn = lang === 'en';
+  const primaryColor = hexToRgb(schoolProfile.primaryColor);
+  const primaryTextColor = contrastingTextColor(schoolProfile.primaryColor);
 
   // Watermark MonPilot
-  drawWatermark(doc, pageWidth);
+  drawWatermark(doc, pageWidth, schoolProfile);
 
   // Header - République du Congo
   doc.setFont('helvetica', 'bold');
@@ -346,7 +360,7 @@ export function generateClassResultsPDF(
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(8);
   doc.setTextColor(100, 116, 139);
-  doc.text(isEn ? 'Unity - Work - Progress' : 'Unité - Travail - Progrès', 14, 19);
+  doc.text(schoolProfile.motto || (isEn ? 'Unity - Work - Progress' : 'Unité - Travail - Progrès'), 14, 19);
   doc.text(
     isEn
       ? 'MINISTRY OF PRESCHOOL, PRIMARY, SECONDARY'
@@ -360,34 +374,37 @@ export function generateClassResultsPDF(
     27
   );
 
-  // Header - School CEMINACE
+  // Header - School profile
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
-  doc.setTextColor(30, 58, 95);
-  doc.text('COMPLEXE SCOLAIRE PRIVÉ CEMINACE', pageWidth - 14, 15, { align: 'right' });
+  doc.setTextColor(...primaryColor);
+  doc.setFontSize(Math.min(10, Math.max(6, 90 / Math.max(doc.getTextWidth(schoolProfile.schoolName), 1) * 10)));
+  doc.text(schoolProfile.schoolName.toUpperCase(), pageWidth - 14, 15, { align: 'right', maxWidth: 90 });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(100, 116, 139);
-  doc.text('Brazzaville - République du Congo', pageWidth - 14, 19, { align: 'right' });
+  doc.text(schoolProfile.address || schoolProfile.city, pageWidth - 14, 19, { align: 'right', maxWidth: 90 });
+  const contactLine = [schoolProfile.phone, schoolProfile.email].filter(Boolean).join(' • ');
+  if (contactLine) doc.text(contactLine, pageWidth - 14, 23, { align: 'right', maxWidth: 90 });
   doc.text(
-    `${isEn ? 'Cycle' : 'Cycle'} : ${level.toUpperCase()}  •  ${isEn ? 'Academic Year' : 'Année Scolaire'} 2025-2026`,
+    `${level.toUpperCase()} • ${isEn ? 'Academic Year' : 'Année Scolaire'} 2025-2026 • ${isEn ? 'Class' : 'Classe'} : ${className}`,
     pageWidth - 14,
-    23,
-    { align: 'right' }
+    27,
+    { align: 'right', maxWidth: 90 }
   );
-  doc.text(`${isEn ? 'Class' : 'Classe'} : ${className}`, pageWidth - 14, 27, { align: 'right' });
+  addSchoolLogo(doc, schoolProfile, pageWidth / 2 - 7, 9, 14);
 
   // Divider
-  doc.setDrawColor(30, 58, 95);
+  doc.setDrawColor(...primaryColor);
   doc.setLineWidth(0.8);
   doc.line(14, 31, pageWidth - 14, 31);
 
   // Title Box
-  doc.setFillColor(30, 58, 95);
+  doc.setFillColor(...primaryColor);
   doc.roundedRect(14, 35, pageWidth - 28, 12, 2, 2, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
-  doc.setTextColor(255, 255, 255);
+  doc.setTextColor(...primaryTextColor);
   const palmaresTitle = isEn
     ? `CLASS PALMARÈS (ACADEMIC RESULTS) - ${trimester.toUpperCase()}`
     : `PALMARÈS DES RÉSULTATS TRIMESTRIELS - ${trimester.toUpperCase()}`;
@@ -406,8 +423,8 @@ export function generateClassResultsPDF(
   ]);
 
   const headers = isEn
-    ? [['Rank', 'ID', 'Student Full Name', 'Sciences', 'Literature', 'PE', 'Average', 'CEMINACE Honors']]
-    : [['Rang', 'Matricule', 'Nom & Prénom de l’Élève', 'Sciences', 'Littérature', 'EPS', 'Moyenne', 'Mention CEMINACE']];
+    ? [['Rank', 'ID', 'Student Full Name', 'Sciences', 'Literature', 'PE', 'Average', 'School Honors']]
+    : [['Rang', 'Matricule', 'Nom & Prénom de l’Élève', 'Sciences', 'Littérature', 'EPS', 'Moyenne', 'Mention']];
 
   autoTable(doc, {
     startY: 51,
@@ -415,8 +432,8 @@ export function generateClassResultsPDF(
     body: tableRows,
     theme: 'grid',
     headStyles: {
-      fillColor: [30, 58, 95],
-      textColor: [255, 255, 255],
+      fillColor: primaryColor,
+      textColor: primaryTextColor,
       fontStyle: 'bold',
       fontSize: 8,
       halign: 'center',
@@ -457,7 +474,7 @@ export function generateClassResultsPDF(
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
-    doc.setTextColor(30, 58, 95);
+    doc.setTextColor(...primaryColor);
 
     const statsText = isEn
       ? `STATISTICS: Enrolled: ${results.length} students | Class Average: ${classAvg}/20 | Highest: ${highest} | Lowest: ${lowest} | Pass (>=10): ${passRate}% (${passCount}/${results.length})`
@@ -472,7 +489,7 @@ export function generateClassResultsPDF(
   doc.setFontSize(8.5);
   doc.setTextColor(15, 23, 42);
   doc.text(isEn ? 'Head Teacher / Homeroom' : 'Le Professeur Principal', 35, sigY);
-  doc.text(isEn ? 'CEMINACE Director of Studies' : 'Le Directeur des Études CEMINACE', pageWidth - 70, sigY);
+  doc.text(schoolProfile.directorOfStudiesName, pageWidth - 70, sigY);
 
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(7.5);
@@ -480,5 +497,6 @@ export function generateClassResultsPDF(
   doc.text(isEn ? 'Visa & Signature' : 'Visa & Signature', 40, sigY + 15);
   doc.text(isEn ? 'Official School Stamp' : 'Cachet de l’Établissement', pageWidth - 65, sigY + 15);
 
-  doc.save(`Palmares_CEMINACE_${className.replace(/\s+/g, '_')}_${trimester.replace(/\s+/g, '_')}.pdf`);
+  const schoolFileName = schoolProfile.schoolName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '_');
+  doc.save(`Palmares_${schoolFileName}_${className.replace(/\s+/g, '_')}_${trimester.replace(/\s+/g, '_')}.pdf`);
 }

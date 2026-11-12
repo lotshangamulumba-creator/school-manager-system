@@ -2,6 +2,21 @@ export type SchoolLevel = 'Primaire' | 'Collège' | 'Lycée';
 
 export type Specialty = 'Sciences' | 'Littérature' | 'EPS';
 
+export interface SchoolProfile {
+  schoolName: string;
+  city: string;
+  address: string;
+  phone: string;
+  email: string;
+  motto: string;
+  principalName: string;
+  directorOfStudiesName: string;
+  primaryColor: string;
+  secondaryColor: string;
+  accentColor: string;
+  logoDataUrl: string | null;
+}
+
 export interface Subject {
   id: string;
   name: string;

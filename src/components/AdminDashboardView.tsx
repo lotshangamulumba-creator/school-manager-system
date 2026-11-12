@@ -47,7 +47,7 @@ export const AdminDashboardView: React.FC<AdminDashboardProps> = ({ selectedTerm
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-sky-400/20 text-sky-300 border border-sky-400/30">
-                {stats.establishmentName || 'CEMINACE'}
+                {stats.establishmentName || 'Établissement'}
               </span>
               <span className="text-xs text-slate-300">• {stats.city}</span>
             </div>

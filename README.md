@@ -40,10 +40,11 @@ Puis ouvrez votre navigateur à l'adresse : **`http://localhost:3000`**
 Les mots de passe ne sont pas inclus dans le code ni dans la documentation. Avant une
 première initialisation, copiez `.env.example` vers `.env` et définissez au minimum
 `JWT_SECRET` et `LICENSE_PUBLIC_KEY` avec des valeurs appropriées. Les variables
-`SEED_ADMIN_PASSWORD` et `SEED_TEACHER_PASSWORD` servent uniquement à initialiser une
-nouvelle base lorsque `database/ceminace_data.json` n'existe pas encore. En développement,
-si les mots de passe seed ne sont pas définis, des valeurs aléatoires sont générées et
-affichées une seule fois dans la console du serveur.
+`SEED_ADMIN_EMAIL` et `SEED_ADMIN_PASSWORD` définissent le compte administrateur initial
+uniquement lorsqu’une nouvelle base est créée. Les enseignants et élèves d’exemple CEMINACE
+ne sont ajoutés que si `SEED_DEMO_DATA=true`; leur mot de passe est alors contrôlé par
+`SEED_TEACHER_PASSWORD`. En développement, les mots de passe manquants sont générés et
+affichés une seule fois dans la console du serveur.
 
 ## 🔐 Licences professionnelles
 
@@ -82,6 +83,31 @@ Les licences sont émises hors ligne; le serveur utilise son horloge UTC pour l�
 Pour une exploitation professionnelle, synchronisez l’horloge du serveur et protégez la
 clé publique, les sauvegardes et l’accès administrateur. Une licence ne doit pas être
 considérée comme une protection contre le propriétaire ayant le contrôle total du serveur.
+
+## 🏫 Déploiements personnalisés par établissement
+
+MonPilot utilise une base de code et une installation isolée par école : chaque déploiement
+possède son fichier de données, ses comptes, son identifiant `schoolId` et sa licence. Ce
+mode évite les forks tout en empêchant une école d’accéder aux données d’une autre. La
+version actuelle n’est pas un tenant partagé : ne mettez pas plusieurs écoles dans le même
+fichier JSON et ne réutilisez pas une copie de la base d’une école pour en créer une autre.
+
+Pour héberger chaque installation sur son propre serveur ou répertoire, configurez pour
+chaque déploiement un `DATABASE_FILE` différent dans son `.env`. Le chemin relatif est
+résolu depuis le dossier du projet :
+
+```env
+DATABASE_FILE=database/ecole-exemple.json
+```
+
+Au premier démarrage avec un chemin de base neuf, MonPilot initialise une base et un
+identifiant d’école indépendants; créez ensuite les comptes et la licence de cette école.
+Pour personnaliser l’installation, connectez-vous comme administrateur et ouvrez
+**Établissement**. Vous pouvez y enregistrer le nom, les coordonnées, le logo PNG/JPEG,
+la palette principale/secondaire/d’accentuation, la devise (slogan) et les signataires.
+Ces paramètres sont sauvegardés dans la base de l’école, appliqués à l’interface et repris
+sur les bulletins PDF. Les anciennes bases sont migrées automatiquement avec les valeurs
+CEMINACE existantes, sans supprimer leurs données.
 
 ---
 

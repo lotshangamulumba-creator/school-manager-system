@@ -3,8 +3,8 @@ export type Language = 'fr' | 'en';
 export const TRANSLATIONS = {
   fr: {
     appTitle: 'MonPilot School ERP',
-    schoolName: 'Complexe Scolaire CEMINACE',
-    schoolLocation: 'Brazzaville, République du Congo',
+    schoolName: 'Établissement scolaire',
+    schoolLocation: 'Ville et pays',
     desktopApp: 'Application Bureau MonPilot School ERP (Tkinter)',
     fixedWindow: 'Format Fixe 980x683 px',
     fullScreen: 'Mode Plein Écran',
@@ -81,8 +81,8 @@ export const TRANSLATIONS = {
     firstRank: '1er',
 
     // Reports tab
-    pdfTitle: 'Téléchargement des Bulletins & Rapports PDF (CEMINACE - Brazzaville)',
-    pdfSubtitle: 'Conformes aux directives officielles du Ministère de l’Enseignement de la République du Congo, avec filigrane MonPilot et classement par spécialité.',
+    pdfTitle: 'Téléchargement des Bulletins & Rapports PDF',
+    pdfSubtitle: 'Avec filigrane MonPilot et classement par spécialité.',
     singleCombinedPdfTitle: 'Exporter UN SEUL Fichier PDF (Tous les Bulletins Assemblés)',
     singleCombinedPdfDesc: 'Génère et télécharge un document unique multi-pages réunissant tous les bulletins individuels de la classe pour le trimestre sélectionné. Idéal pour l’impression directe en bloc.',
     singleCombinedPdfBtn: 'Télécharger le Fichier PDF Unique (Tous les Bulletins)',
@@ -91,7 +91,7 @@ export const TRANSLATIONS = {
     classPalmaresBtn: 'Télécharger Palmarès PDF',
     individualDownloadsTitle: 'Téléchargement unitaire par élève :',
     bulletinBtn: 'Bulletin PDF',
-    statusEstablishment: 'Établissement : Complexe Scolaire CEMINACE (Brazzaville, République du Congo)',
+    statusEstablishment: 'Établissement scolaire',
     statusWatermark: 'Filigrane MonPilot Actif',
 
     // Levels
@@ -101,8 +101,8 @@ export const TRANSLATIONS = {
   },
   en: {
     appTitle: 'MonPilot School ERP',
-    schoolName: 'CEMINACE School Complex',
-    schoolLocation: 'Brazzaville, Republic of the Congo',
+    schoolName: 'School',
+    schoolLocation: 'City and country',
     desktopApp: 'MonPilot School ERP Desktop Application (Tkinter)',
     fixedWindow: 'Fixed 980x683 px',
     fullScreen: 'Full Screen Mode',
@@ -179,8 +179,8 @@ export const TRANSLATIONS = {
     firstRank: '1st',
 
     // Reports tab
-    pdfTitle: 'Download PDF Report Cards & Palmarès (CEMINACE - Brazzaville)',
-    pdfSubtitle: 'Compliant with Republic of the Congo Ministry of Education standards, featuring the MonPilot watermark and specialty rankings.',
+    pdfTitle: 'Download PDF Report Cards & Palmarès',
+    pdfSubtitle: 'With the MonPilot watermark and specialty rankings.',
     singleCombinedPdfTitle: 'Export ONE SINGLE PDF File (All Combined Report Cards)',
     singleCombinedPdfDesc: 'Generates and downloads a single multi-page PDF document containing all individual student report cards for the selected class and trimester. Ideal for bulk printing.',
     singleCombinedPdfBtn: 'Download Single PDF File (All Report Cards Combined)',
@@ -189,7 +189,7 @@ export const TRANSLATIONS = {
     classPalmaresBtn: 'Download Class Palmarès PDF',
     individualDownloadsTitle: 'Individual download per student:',
     bulletinBtn: 'PDF Card',
-    statusEstablishment: 'School: CEMINACE School Complex (Brazzaville, Republic of the Congo)',
+    statusEstablishment: 'School',
     statusWatermark: 'MonPilot Watermark Active',
 
     // Levels

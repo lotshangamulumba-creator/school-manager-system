@@ -10,6 +10,8 @@ import {
   SignedSchoolLicense,
   verifyInstallableLicense,
 } from './licensing.js';
+import { DEFAULT_SCHOOL_PROFILE } from '../data/schoolProfile.js';
+import { validateSchoolProfile } from './schoolProfile.js';
 
 export const apiRouter = Router();
 
@@ -132,6 +134,15 @@ apiRouter.get('/auth/me', authMiddleware, (req: AuthenticatedRequest, res: Respo
     prenom: user.prenom,
     role: user.role,
     telephone: user.telephone
+  });
+});
+
+apiRouter.get('/school-profile', (_req: Request, res: Response) => {
+  const data = db.getData();
+  res.json(data.schoolProfile || {
+    ...DEFAULT_SCHOOL_PROFILE,
+    schoolName: data.establishmentName,
+    city: data.establishmentCity,
   });
 });
 
@@ -271,6 +282,48 @@ apiRouter.use(authMiddleware, (req: AuthenticatedRequest, res: Response, next) =
       ? 'La licence de cette école a expiré.'
       : 'Une licence valide est nécessaire pour utiliser MonPilot School ERP.',
   });
+});
+
+apiRouter.put('/school-profile', authMiddleware, requireRoles(['ADMIN']), (req: AuthenticatedRequest, res: Response) => {
+  const profile = validateSchoolProfile(req.body?.profile);
+  if (!profile) {
+    return res.status(400).json({
+      error: 'Profil invalide : vérifiez les champs, les couleurs hexadécimales et le logo PNG/JPEG (1 Mo maximum).',
+    });
+  }
+
+  const data = db.getData();
+  const previousProfile = data.schoolProfile;
+  const previousName = data.establishmentName;
+  const previousCity = data.establishmentCity;
+  const previousAuditLogs = data.auditLogs;
+  const now = new Date().toISOString();
+  const auditEntry = {
+    id: `log-${Date.now()}-${crypto.randomUUID()}`,
+    userId: req.user!.id,
+    userEmail: req.user!.email,
+    action: 'UPDATE_SCHOOL_PROFILE',
+    details: `Profil de l’établissement mis à jour (${profile.schoolName}).`,
+    ipAddress: req.ip,
+    createdAt: now,
+  };
+
+  try {
+    data.schoolProfile = profile;
+    data.establishmentName = profile.schoolName;
+    data.establishmentCity = profile.city;
+    data.auditLogs = [auditEntry, ...previousAuditLogs].slice(0, 500);
+    db.persist();
+  } catch (error) {
+    data.schoolProfile = previousProfile;
+    data.establishmentName = previousName;
+    data.establishmentCity = previousCity;
+    data.auditLogs = previousAuditLogs;
+    console.error('School profile update failed and was rolled back:', error);
+    return res.status(500).json({ error: 'Le profil de l’établissement n’a pas pu être enregistré.' });
+  }
+
+  res.json(data.schoolProfile);
 });
 
 // ============================================================================

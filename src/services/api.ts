@@ -1,4 +1,5 @@
 // Service API Client pour MonPilot School ERP
+import { SchoolProfile } from '../types';
 
 const API_BASE = '/api';
 
@@ -186,6 +187,17 @@ class ApiService {
 
   async getMe(): Promise<UserProfile> {
     return this.request<UserProfile>('/auth/me');
+  }
+
+  async getSchoolProfile(): Promise<SchoolProfile> {
+    return this.request<SchoolProfile>('/school-profile');
+  }
+
+  async updateSchoolProfile(profile: SchoolProfile): Promise<SchoolProfile> {
+    return this.request<SchoolProfile>('/school-profile', {
+      method: 'PUT',
+      body: JSON.stringify({ profile }),
+    });
   }
 
   async getLicenseStatus(): Promise<LicenseStatusResponse> {

@@ -4,6 +4,8 @@ import path from 'path';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { SignedSchoolLicense } from './licensing.js';
+import { DEFAULT_SCHOOL_PROFILE } from '../data/schoolProfile.js';
+import { SchoolProfile } from '../types.js';
 
 export interface DbUser {
   id: string;
@@ -128,6 +130,7 @@ export interface SchoolDatabase {
   schoolId: string;
   establishmentName: string;
   establishmentCity: string;
+  schoolProfile: SchoolProfile;
   academicYears: DbAcademicYear[];
   users: DbUser[];
   teachers: DbTeacher[];
@@ -140,8 +143,8 @@ export interface SchoolDatabase {
   licenseRenewals: LicenseRenewal[];
 }
 
-const DATA_DIR = path.join(process.cwd(), 'database');
-const DB_FILE = path.join(DATA_DIR, 'ceminace_data.json');
+const DB_FILE = path.resolve(process.cwd(), process.env.DATABASE_FILE || path.join('database', 'ceminace_data.json'));
+const DATA_DIR = path.dirname(DB_FILE);
 
 class DatabaseEngine {
   private data: SchoolDatabase;
@@ -178,6 +181,40 @@ class DatabaseEngine {
         }
         if (!Array.isArray(parsed.licenseRenewals)) {
           parsed.licenseRenewals = [];
+          migrated = true;
+        }
+        if (!parsed.schoolProfile || typeof parsed.schoolProfile !== 'object') {
+          parsed.schoolProfile = {
+            ...DEFAULT_SCHOOL_PROFILE,
+            schoolName: parsed.establishmentName || DEFAULT_SCHOOL_PROFILE.schoolName,
+            city: parsed.establishmentCity || DEFAULT_SCHOOL_PROFILE.city,
+          };
+          migrated = true;
+        } else {
+          if (Object.keys(DEFAULT_SCHOOL_PROFILE).some((field) => !(field in parsed.schoolProfile))) {
+            migrated = true;
+          }
+          parsed.schoolProfile = {
+            ...DEFAULT_SCHOOL_PROFILE,
+            ...parsed.schoolProfile,
+            schoolName: typeof parsed.schoolProfile.schoolName === 'string'
+              ? parsed.schoolProfile.schoolName
+              : parsed.establishmentName || DEFAULT_SCHOOL_PROFILE.schoolName,
+            city: typeof parsed.schoolProfile.city === 'string'
+              ? parsed.schoolProfile.city
+              : parsed.establishmentCity || DEFAULT_SCHOOL_PROFILE.city,
+          };
+          if (parsed.schoolProfile.logoDataUrl === undefined) {
+            parsed.schoolProfile.logoDataUrl = null;
+            migrated = true;
+          }
+        }
+        if (parsed.establishmentName !== parsed.schoolProfile.schoolName) {
+          parsed.establishmentName = parsed.schoolProfile.schoolName;
+          migrated = true;
+        }
+        if (parsed.establishmentCity !== parsed.schoolProfile.city) {
+          parsed.establishmentCity = parsed.schoolProfile.city;
           migrated = true;
         }
         if (migrated) this.saveData(parsed);
@@ -228,15 +265,16 @@ class DatabaseEngine {
 
   private generateSeedData(): SchoolDatabase {
     const now = new Date().toISOString();
+    const seedDemoData = process.env.SEED_DEMO_DATA === 'true';
     const adminPassword = process.env.SEED_ADMIN_PASSWORD || crypto.randomBytes(24).toString('base64url');
     const teacherPassword = process.env.SEED_TEACHER_PASSWORD || crypto.randomBytes(24).toString('base64url');
-    if (process.env.NODE_ENV === 'production' && (!process.env.SEED_ADMIN_PASSWORD || !process.env.SEED_TEACHER_PASSWORD)) {
-      throw new Error('SEED_ADMIN_PASSWORD et SEED_TEACHER_PASSWORD doivent être définis pour initialiser la base en production.');
+    if (process.env.NODE_ENV === 'production' && (!process.env.SEED_ADMIN_PASSWORD || (seedDemoData && !process.env.SEED_TEACHER_PASSWORD))) {
+      throw new Error('SEED_ADMIN_PASSWORD est obligatoire; SEED_TEACHER_PASSWORD l’est aussi si SEED_DEMO_DATA=true.');
     }
-    if (process.env.NODE_ENV !== 'production' && (!process.env.SEED_ADMIN_PASSWORD || !process.env.SEED_TEACHER_PASSWORD)) {
-      console.warn('[MonPilot] Base initialisée avec des mots de passe de développement générés. Définissez SEED_ADMIN_PASSWORD et SEED_TEACHER_PASSWORD pour les contrôler.');
+    if (process.env.NODE_ENV !== 'production' && (!process.env.SEED_ADMIN_PASSWORD || (seedDemoData && !process.env.SEED_TEACHER_PASSWORD))) {
+      console.warn('[MonPilot] Base initialisée avec des mots de passe de développement générés. Définissez les mots de passe seed correspondants pour les contrôler.');
       console.warn(`[MonPilot] Compte admin: ${adminPassword}`);
-      console.warn(`[MonPilot] Compte enseignant: ${teacherPassword}`);
+      if (seedDemoData) console.warn(`[MonPilot] Compte enseignant: ${teacherPassword}`);
     }
     const adminHash = bcrypt.hashSync(adminPassword, 12);
     const teacherHash = bcrypt.hashSync(teacherPassword, 12);
@@ -244,7 +282,7 @@ class DatabaseEngine {
     const users: DbUser[] = [
       {
         id: 'usr-admin-01',
-        email: 'admin@ceminace.cg',
+        email: process.env.SEED_ADMIN_EMAIL || 'admin@ceminace.cg',
         passwordHash: adminHash,
         nom: 'NGOUABI',
         prenom: 'Alphonse',
@@ -304,6 +342,8 @@ class DatabaseEngine {
         createdAt: now
       }
     ];
+    if (!seedDemoData) teachers.length = 0;
+    if (!seedDemoData) users.splice(1);
 
     const academicYears: DbAcademicYear[] = [
       {
@@ -331,6 +371,7 @@ class DatabaseEngine {
       { id: 'cls-term-d', nom: 'Terminale D', niveau: 'Lycée', section: 'Sciences Naturelles & Biologie', capacite: 40, statut: true, academicYearId: 'ay-2025-2026', createdAt: now },
       { id: 'cls-term-a', nom: 'Terminale A', niveau: 'Lycée', section: 'Lettres & Philosophie', capacite: 45, statut: true, academicYearId: 'ay-2025-2026', headTeacherId: 'tch-02', createdAt: now }
     ];
+    if (!seedDemoData) classes.forEach((schoolClass) => { delete schoolClass.headTeacherId; });
 
     const subjects: DbSubject[] = [
       { id: 'sub-math', nom: 'Mathématiques', code: 'MATH', niveau: 'Collège', specialty: 'Sciences', coeff: 4, statut: true, createdAt: now },
@@ -342,14 +383,14 @@ class DatabaseEngine {
       { id: 'sub-eps', nom: 'Éducation Physique et Sportive (EPS)', code: 'EPS', niveau: 'Collège', specialty: 'EPS', coeff: 2, statut: true, createdAt: now }
     ];
 
-    const students: DbStudent[] = [
+    const students: DbStudent[] = seedDemoData ? [
       { id: 'CEM-001', matricule: 'CEM-001', nom: 'MOUKOKO', prenom: 'Grace', sexe: 'F', dateNaissance: '12/04/2010', lieuNaissance: 'Brazzaville', parentPhone: '+242 06 654 32 10', classId: 'cls-6a', className: '6ème A', statut: true, createdAt: now, updatedAt: now },
       { id: 'CEM-002', matricule: 'CEM-002', nom: 'NGOMA', prenom: 'Christian', sexe: 'M', dateNaissance: '25/08/2009', lieuNaissance: 'Pointe-Noire', parentPhone: '+242 05 512 88 44', classId: 'cls-6a', className: '6ème A', statut: true, createdAt: now, updatedAt: now },
       { id: 'CEM-003', matricule: 'CEM-003', nom: 'MAKOSSO', prenom: 'Aurelie', sexe: 'F', dateNaissance: '03/11/2010', lieuNaissance: 'Brazzaville', parentPhone: '+242 06 901 22 77', classId: 'cls-6a', className: '6ème A', statut: true, createdAt: now, updatedAt: now },
       { id: 'CEM-004', matricule: 'CEM-004', nom: 'SAMBA', prenom: 'Kevin', sexe: 'M', dateNaissance: '17/01/2009', lieuNaissance: 'Dolisie', parentPhone: '+242 04 433 19 80', classId: 'cls-6a', className: '6ème A', statut: true, createdAt: now, updatedAt: now },
       { id: 'CEM-005', matricule: 'CEM-005', nom: 'LOUBAKI', prenom: 'Priscille', sexe: 'F', dateNaissance: '09/06/2010', lieuNaissance: 'Brazzaville', parentPhone: '+242 06 720 11 05', classId: 'cls-6a', className: '6ème A', statut: true, createdAt: now, updatedAt: now },
       { id: 'CEM-006', matricule: 'CEM-006', nom: 'MPASSI', prenom: 'Arnaud', sexe: 'M', dateNaissance: '22/12/2009', lieuNaissance: 'Kinkala', parentPhone: '+242 05 609 45 33', classId: 'cls-6a', className: '6ème A', statut: true, createdAt: now, updatedAt: now }
-    ];
+    ] : [];
 
     const grades: DbGrade[] = [];
     const sampleGradesMatrix: Record<string, { eval: number; dev1: number; dev2: number; comp: number }> = {
@@ -401,8 +442,9 @@ class DatabaseEngine {
     return {
       version: 1,
       schoolId: crypto.randomUUID(),
-      establishmentName: 'Complexe Scolaire Privé CEMINACE',
-      establishmentCity: 'Brazzaville (Congo)',
+      establishmentName: DEFAULT_SCHOOL_PROFILE.schoolName,
+      establishmentCity: DEFAULT_SCHOOL_PROFILE.city,
+      schoolProfile: { ...DEFAULT_SCHOOL_PROFILE },
       academicYears,
       users,
       teachers,

@@ -8,3 +8,4 @@ coverage/
 !.env.example
 license-keys/
 license-private.pem
+database/*.json
