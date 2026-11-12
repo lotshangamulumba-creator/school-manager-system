@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Student, StudentGrades } from '../types';
 import { MidnightButton } from './MidnightButton';
-import { X, Calculator, Award } from 'lucide-react';
+import { X, Calculator, Award, AlertCircle } from 'lucide-react';
 
 interface GradeEditModalProps {
   isOpen: boolean;
@@ -10,7 +10,7 @@ interface GradeEditModalProps {
   subjectName: string;
   trimester?: string;
   initialGrades: Partial<StudentGrades>;
-  onSave: (grades: StudentGrades) => void;
+  onSave: (grades: StudentGrades) => Promise<void>;
 }
 
 export const GradeEditModal: React.FC<GradeEditModalProps> = ({
@@ -30,12 +30,15 @@ export const GradeEditModal: React.FC<GradeEditModalProps> = ({
   const [composition, setComposition] = useState(
     (initialGrades.composition ?? initialGrades.dev3 ?? '').toString()
   );
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     setEvaluations((initialGrades.evaluations ?? initialGrades.eval1 ?? '').toString());
     setDev1((initialGrades.dev1 ?? '').toString());
     setDev2((initialGrades.dev2 ?? '').toString());
     setComposition((initialGrades.composition ?? initialGrades.dev3 ?? '').toString());
+    setSaveError(null);
   }, [initialGrades, isOpen]);
 
   if (!isOpen || !student) return null;
@@ -50,18 +53,26 @@ export const GradeEditModal: React.FC<GradeEditModalProps> = ({
   // Formule officielle CEMINACE Congo : Moyenne = (CC + 2 * COMPOSITION) / 3
   const computedMoyenne = (cc + 2 * numComp) / 3;
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSave({
-      evaluations: numEval,
-      dev1: numD1,
-      dev2: numD2,
-      composition: numComp,
-      eval1: numEval,
-      eval2: numEval,
-      dev3: numComp,
-    });
-    onClose();
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      await onSave({
+        evaluations: numEval,
+        dev1: numD1,
+        dev2: numD2,
+        composition: numComp,
+        eval1: numEval,
+        eval2: numEval,
+        dev3: numComp,
+      });
+      onClose();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'L’enregistrement des notes a échoué.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -79,6 +90,7 @@ export const GradeEditModal: React.FC<GradeEditModalProps> = ({
           </div>
           <button
             onClick={onClose}
+            disabled={isSaving}
             className="text-slate-300 hover:text-white p-1 rounded-md transition-colors"
           >
             <X className="w-5 h-5" />
@@ -176,6 +188,13 @@ export const GradeEditModal: React.FC<GradeEditModalProps> = ({
             </div>
           </div>
 
+          {saveError && (
+            <div role="alert" className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{saveError}</span>
+            </div>
+          )}
+
           {/* Live computed preview */}
           <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 grid grid-cols-3 text-center text-xs gap-1">
             <div>
@@ -195,11 +214,11 @@ export const GradeEditModal: React.FC<GradeEditModalProps> = ({
           </div>
 
           <div className="pt-2 border-t border-slate-100 flex justify-end gap-2">
-            <MidnightButton type="button" variant="secondary" size="sm" onClick={onClose}>
+            <MidnightButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={isSaving}>
               Annuler
             </MidnightButton>
-            <MidnightButton type="submit" size="sm">
-              Enregistrer
+            <MidnightButton type="submit" size="sm" disabled={isSaving}>
+              {isSaving ? 'Enregistrement...' : 'Enregistrer'}
             </MidnightButton>
           </div>
         </form>
