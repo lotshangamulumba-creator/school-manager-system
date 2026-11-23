@@ -144,7 +144,7 @@ export const AdminDashboardView: React.FC<AdminDashboardProps> = ({ selectedTerm
             <BarChart2 className="w-5 h-5 text-sky-600" />
             <h3 className="font-black text-slate-900 text-sm">Performance par Classe ({stats.classes?.length || 0})</h3>
           </div>
-          <span className="text-xs text-slate-500 font-medium">Formule CEMINACE CC (1/3) + Composition (2/3)</span>
+          <span className="text-xs text-slate-500 font-medium">Formule officielle CC (1/3) + Composition (2/3)</span>
         </div>
 
         <div className="overflow-x-auto">

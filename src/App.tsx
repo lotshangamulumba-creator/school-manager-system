@@ -853,7 +853,10 @@ export default function App() {
         </div>
 
         {/* 3. Navigation par Onglets Principaux (Bleu Foncé avec Surbrillance) */}
-        <div className="relative z-10 bg-gradient-to-r from-[#0C1E36] via-[#152F52] to-[#0C1E36] border-y border-[#1E3A5F] shadow-md px-3 flex items-center justify-between overflow-x-auto">
+        <div
+          className="relative z-10 border-y shadow-md px-3 flex items-center justify-between overflow-x-auto"
+          style={{ backgroundColor: 'var(--school-secondary)', borderColor: 'var(--school-secondary)' }}
+        >
           <div className="flex items-center gap-1.5 py-1">
             {/* ONGLET 0 : TABLEAU DE BORD (Accessible à l'administration) */}
             {currentUser?.role === 'ADMIN' && (
@@ -861,11 +864,11 @@ export default function App() {
                 onClick={() => setActiveTab('dashboard')}
                 className={`flex items-center gap-2 px-3.5 py-2 text-xs md:text-sm font-semibold rounded-t-md transition-all cursor-pointer ${
                   activeTab === 'dashboard'
-                    ? 'bg-gradient-to-b from-[#254C7B] to-[#18365D] text-white font-bold border-b-2 border-sky-400 shadow-[0_2px_14px_rgba(56,189,248,0.45),inset_0_1px_0_rgba(255,255,255,0.2)]'
-                    : 'text-slate-300 hover:text-white hover:bg-white/10 border-b-2 border-transparent'
+                    ? 'bg-[var(--school-primary)] text-[var(--school-on-primary)] font-bold border-b-2 border-[var(--school-accent)]'
+                    : 'text-[var(--school-on-secondary)]/75 hover:text-[var(--school-on-secondary)] hover:bg-white/10 border-b-2 border-transparent'
                 }`}
               >
-                <LayoutDashboard className={`w-4 h-4 ${activeTab === 'dashboard' ? 'text-sky-300 drop-shadow-[0_0_8px_rgba(56,189,248,0.8)]' : 'text-slate-400'}`} />
+                <LayoutDashboard className={`w-4 h-4 ${activeTab === 'dashboard' ? 'text-[var(--school-accent)]' : 'text-[var(--school-on-secondary)]/70'}`} />
                 <span>Tableau de Bord</span>
               </button>
             )}
@@ -874,16 +877,16 @@ export default function App() {
               onClick={() => setActiveTab('students')}
               className={`flex items-center gap-2 px-3.5 py-2 text-xs md:text-sm font-semibold rounded-t-md transition-all cursor-pointer ${
                 activeTab === 'students'
-                  ? 'bg-gradient-to-b from-[#254C7B] to-[#18365D] text-white font-bold border-b-2 border-sky-400 shadow-[0_2px_14px_rgba(56,189,248,0.45),inset_0_1px_0_rgba(255,255,255,0.2)]'
-                  : 'text-slate-300 hover:text-white hover:bg-white/10 border-b-2 border-transparent'
+                  ? 'bg-[var(--school-primary)] text-[var(--school-on-primary)] font-bold border-b-2 border-[var(--school-accent)]'
+                  : 'text-[var(--school-on-secondary)]/75 hover:text-[var(--school-on-secondary)] hover:bg-white/10 border-b-2 border-transparent'
               }`}
             >
-              <Users className={`w-4 h-4 ${activeTab === 'students' ? 'text-sky-300 drop-shadow-[0_0_8px_rgba(56,189,248,0.8)]' : 'text-slate-400'}`} />
+              <Users className={`w-4 h-4 ${activeTab === 'students' ? 'text-[var(--school-accent)]' : 'text-[var(--school-on-secondary)]/70'}`} />
               <span>{t.tabStudents}</span>
               <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
                 activeTab === 'students'
-                  ? 'bg-sky-400/25 text-sky-100 border border-sky-400/50 shadow-2xs'
-                  : 'bg-white/10 text-slate-300'
+                  ? 'bg-[var(--school-primary)] text-[var(--school-on-primary)] border border-[var(--school-accent)]'
+                  : 'bg-[var(--school-primary)]/70 text-[var(--school-on-primary)]'
               }`}>
                 {currentClassStudents.length}
               </span>
@@ -893,11 +896,11 @@ export default function App() {
               onClick={() => setActiveTab('grades')}
               className={`flex items-center gap-2 px-3.5 py-2 text-xs md:text-sm font-semibold rounded-t-md transition-all cursor-pointer ${
                 activeTab === 'grades'
-                  ? 'bg-gradient-to-b from-[#254C7B] to-[#18365D] text-white font-bold border-b-2 border-sky-400 shadow-[0_2px_14px_rgba(56,189,248,0.45),inset_0_1px_0_rgba(255,255,255,0.2)]'
-                  : 'text-slate-300 hover:text-white hover:bg-white/10 border-b-2 border-transparent'
+                  ? 'bg-[var(--school-primary)] text-[var(--school-on-primary)] font-bold border-b-2 border-[var(--school-accent)]'
+                  : 'text-[var(--school-on-secondary)]/75 hover:text-[var(--school-on-secondary)] hover:bg-white/10 border-b-2 border-transparent'
               }`}
             >
-              <Calculator className={`w-4 h-4 ${activeTab === 'grades' ? 'text-sky-300 drop-shadow-[0_0_8px_rgba(56,189,248,0.8)]' : 'text-slate-400'}`} />
+              <Calculator className={`w-4 h-4 ${activeTab === 'grades' ? 'text-[var(--school-accent)]' : 'text-[var(--school-on-secondary)]/70'}`} />
               <span>{t.tabGrades}</span>
             </button>
 
@@ -905,11 +908,11 @@ export default function App() {
               onClick={() => setActiveTab('rankings')}
               className={`flex items-center gap-2 px-3.5 py-2 text-xs md:text-sm font-semibold rounded-t-md transition-all cursor-pointer ${
                 activeTab === 'rankings'
-                  ? 'bg-gradient-to-b from-[#254C7B] to-[#18365D] text-white font-bold border-b-2 border-sky-400 shadow-[0_2px_14px_rgba(56,189,248,0.45),inset_0_1px_0_rgba(255,255,255,0.2)]'
-                  : 'text-slate-300 hover:text-white hover:bg-white/10 border-b-2 border-transparent'
+                  ? 'bg-[var(--school-primary)] text-[var(--school-on-primary)] font-bold border-b-2 border-[var(--school-accent)]'
+                  : 'text-[var(--school-on-secondary)]/75 hover:text-[var(--school-on-secondary)] hover:bg-white/10 border-b-2 border-transparent'
               }`}
             >
-              <Award className={`w-4 h-4 ${activeTab === 'rankings' ? 'text-sky-300 drop-shadow-[0_0_8px_rgba(56,189,248,0.8)]' : 'text-slate-400'}`} />
+              <Award className={`w-4 h-4 ${activeTab === 'rankings' ? 'text-[var(--school-accent)]' : 'text-[var(--school-on-secondary)]/70'}`} />
               <span>{t.tabRankings}</span>
             </button>
 
@@ -917,11 +920,11 @@ export default function App() {
               onClick={() => setActiveTab('reports')}
               className={`flex items-center gap-2 px-3.5 py-2 text-xs md:text-sm font-semibold rounded-t-md transition-all cursor-pointer ${
                 activeTab === 'reports'
-                  ? 'bg-gradient-to-b from-[#254C7B] to-[#18365D] text-white font-bold border-b-2 border-sky-400 shadow-[0_2px_14px_rgba(56,189,248,0.45),inset_0_1px_0_rgba(255,255,255,0.2)]'
-                  : 'text-slate-300 hover:text-white hover:bg-white/10 border-b-2 border-transparent'
+                  ? 'bg-[var(--school-primary)] text-[var(--school-on-primary)] font-bold border-b-2 border-[var(--school-accent)]'
+                  : 'text-[var(--school-on-secondary)]/75 hover:text-[var(--school-on-secondary)] hover:bg-white/10 border-b-2 border-transparent'
               }`}
             >
-              <FileDown className={`w-4 h-4 ${activeTab === 'reports' ? 'text-sky-300 drop-shadow-[0_0_8px_rgba(56,189,248,0.8)]' : 'text-slate-400'}`} />
+              <FileDown className={`w-4 h-4 ${activeTab === 'reports' ? 'text-[var(--school-accent)]' : 'text-[var(--school-on-secondary)]/70'}`} />
               <span>{t.tabReports}</span>
             </button>
 
@@ -930,16 +933,16 @@ export default function App() {
               onClick={() => setActiveTab('generaltotal')}
               className={`flex items-center gap-2 px-3.5 py-2 text-xs md:text-sm font-semibold rounded-t-md transition-all cursor-pointer ${
                 activeTab === 'generaltotal'
-                  ? 'bg-gradient-to-b from-[#254C7B] to-[#18365D] text-white font-bold border-b-2 border-sky-400 shadow-[0_2px_14px_rgba(56,189,248,0.45),inset_0_1px_0_rgba(255,255,255,0.2)]'
-                  : 'text-slate-300 hover:text-white hover:bg-white/10 border-b-2 border-transparent'
+                  ? 'bg-[var(--school-primary)] text-[var(--school-on-primary)] font-bold border-b-2 border-[var(--school-accent)]'
+                  : 'text-[var(--school-on-secondary)]/75 hover:text-[var(--school-on-secondary)] hover:bg-white/10 border-b-2 border-transparent'
               }`}
             >
-              <Layers className={`w-4 h-4 ${activeTab === 'generaltotal' ? 'text-sky-300 drop-shadow-[0_0_8px_rgba(56,189,248,0.8)]' : 'text-indigo-300'}`} />
+              <Layers className={`w-4 h-4 ${activeTab === 'generaltotal' ? 'text-[var(--school-accent)]' : 'text-[var(--school-on-secondary)]/70'}`} />
               <span>{t.tabGeneralTotal}</span>
               <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
                 activeTab === 'generaltotal'
-                  ? 'bg-indigo-400/30 text-indigo-100 border border-indigo-400/50 shadow-2xs'
-                  : 'bg-white/10 text-slate-300'
+                  ? 'bg-[var(--school-primary)] text-[var(--school-on-primary)] border border-[var(--school-accent)]'
+                  : 'bg-[var(--school-primary)]/70 text-[var(--school-on-primary)]'
               }`}>
                 {level}
               </span>
@@ -1086,7 +1089,7 @@ export default function App() {
 
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="text-[11px] text-sky-950 bg-sky-50 border border-sky-200 px-2.5 py-1 rounded">
-                    <strong>Formule CEMINACE :</strong> CC = (Évals + Dev1 + Dev2)/3 • Moy = (CC + 2×COMP)/3
+                    <strong>Formule officielle :</strong> CC = (Évals + Dev1 + Dev2)/3 • Moy = (CC + 2×COMP)/3
                   </div>
 
                   {/* Bouton principal pour SAISIR LES NOTES (Demande explicite de l'utilisateur) */}

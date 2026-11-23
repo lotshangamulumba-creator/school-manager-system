@@ -919,7 +919,12 @@ apiRouter.get('/backup/export', authMiddleware, requireRoles(['ADMIN']), (req: A
   const data = db.getData();
   db.logAudit('BACKUP_EXPORT', 'Téléchargement de sauvegarde complète de la base de données', req.user?.id, req.user?.email, req.ip);
   res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Content-Disposition', `attachment; filename="ceminace_backup_${Date.now()}.json"`);
+  const schoolSlug = data.schoolProfile.schoolName
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '') || 'ecole';
+  res.setHeader('Content-Disposition', `attachment; filename="${schoolSlug}_backup_${Date.now()}.json"`);
   res.send(JSON.stringify(data, null, 2));
 });
 

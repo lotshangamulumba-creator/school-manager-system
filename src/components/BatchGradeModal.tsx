@@ -154,7 +154,7 @@ export const BatchGradeModal: React.FC<BatchGradeModalProps> = ({
           </button>
         </div>
 
-        {/* Toolbar: Subject Selector and CEMINACE Formula */}
+        {/* Toolbar: Subject Selector and official formula */}
         <div className="bg-slate-50 border-b border-slate-200 p-3.5 flex flex-wrap items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold text-slate-700">Matière sélectionnée :</span>

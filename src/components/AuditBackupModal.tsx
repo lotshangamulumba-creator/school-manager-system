@@ -47,7 +47,7 @@ export const AuditBackupModal: React.FC<AuditBackupModalProps> = ({ isOpen, onCl
         const downloadUrl = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = downloadUrl;
-        a.download = `ceminace_sauvegarde_${new Date().toISOString().slice(0, 10)}.json`;
+        a.download = `monpilot_sauvegarde_${new Date().toISOString().slice(0, 10)}.json`;
         document.body.appendChild(a);
         a.click();
         a.remove();

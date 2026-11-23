@@ -218,7 +218,7 @@ export const SubjectsModal: React.FC<SubjectsModalProps> = ({
                 <tr>
                   <th className="py-2 px-3 font-semibold">Matière</th>
                   <th className="py-2 px-3 font-semibold text-center w-24">Coefficient</th>
-                  <th className="py-2 px-3 font-semibold w-36">Spécialité CEMINACE</th>
+                  <th className="py-2 px-3 font-semibold w-36">Spécialité académique</th>
                   <th className="py-2 px-3 font-semibold text-right w-16">Action</th>
                 </tr>
               </thead>

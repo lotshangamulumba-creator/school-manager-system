@@ -26,7 +26,7 @@ export const TRANSLATIONS = {
     tabPython: 'Code Python (.py)',
 
     // Actions & Tools
-    enterGradesButton: '✍️ Saisir les Notes',
+    enterGradesButton: 'Saisir les Notes',
 
     // Students tab
     registerStudent: 'Inscrire un Élève',
@@ -44,7 +44,7 @@ export const TRANSLATIONS = {
 
     // Grades tab
     subjectToGrade: 'Matière à évaluer :',
-    formulaNotice: 'Formule CEMINACE (Congo) : CC = (Évaluations + Devoir 1 + Devoir 2) / 3  •  Moyenne = (CC + 2 × COMPOSITION) / 3',
+    formulaNotice: 'Formule officielle : CC = (Évaluations + Devoir 1 + Devoir 2) / 3  •  Moyenne = (CC + 2 × COMPOSITION) / 3',
     evalNotes: 'Notes Évaluations (/20)',
     eval1: 'Éval. 1 (/20)',
     eval2: 'Éval. 2 (/20)',
@@ -59,7 +59,7 @@ export const TRANSLATIONS = {
     generalTotalTitle: 'Grand Total Général & Synthèse par Spécialité',
     generalTotalSubtitle: 'Moyennes par spécialistes (Sciences, Littérature, EPS) pour chaque classe de chaque niveau (Primaire, Collège, Lycée)',
     levelTotal: 'Total / Moyenne du Niveau',
-    establishmentGrandTotal: 'GRAND TOTAL GÉNÉRAL ÉTABLISSEMENT CEMINACE',
+    establishmentGrandTotal: 'GRAND TOTAL GÉNÉRAL DE L’ÉTABLISSEMENT',
 
     // Rankings tab
     evaluatedCount: 'Effectif évalué',
@@ -71,7 +71,7 @@ export const TRANSLATIONS = {
     literatureRank: 'Moy. Littérature (Rang)',
     epsRank: 'Moy. EPS (Rang)',
     generalAverage: 'Moyenne Générale',
-    mention: 'Mention CEMINACE',
+    mention: 'Mention',
     firstRank: '1er',
 
     // Reports tab
@@ -118,7 +118,7 @@ export const TRANSLATIONS = {
     tabPython: 'Python Code (.py)',
 
     // Actions & Tools
-    enterGradesButton: '✍️ Enter Grades',
+    enterGradesButton: 'Enter Grades',
 
     // Students tab
     registerStudent: 'Register Student',
@@ -136,7 +136,7 @@ export const TRANSLATIONS = {
 
     // Grades tab
     subjectToGrade: 'Subject to evaluate:',
-    formulaNotice: 'CEMINACE Formula (Congo): CA = (Evaluations + HW1 + HW2) / 3  •  Average = (CA + 2 × COMPOSITION) / 3',
+    formulaNotice: 'Official formula: CA = (Evaluations + HW1 + HW2) / 3  •  Average = (CA + 2 × COMPOSITION) / 3',
     evalNotes: 'Evaluation Notes (/20)',
     eval1: 'Eval 1 (/20)',
     eval2: 'Eval 2 (/20)',
@@ -151,7 +151,7 @@ export const TRANSLATIONS = {
     generalTotalTitle: 'Grand General Total & Specialty Summary',
     generalTotalSubtitle: 'Averages by specialists (Sciences, Literature, PE) for each class of each level (Primary, Middle School, High School)',
     levelTotal: 'Level Total / Average',
-    establishmentGrandTotal: 'CEMINACE ESTABLISHMENT GRAND GENERAL TOTAL',
+    establishmentGrandTotal: 'ESTABLISHMENT GRAND GENERAL TOTAL',
 
     // Rankings tab
     evaluatedCount: 'Evaluated count',
@@ -163,7 +163,7 @@ export const TRANSLATIONS = {
     literatureRank: 'Literature Avg (Rank)',
     epsRank: 'PE Avg (Rank)',
     generalAverage: 'General Average',
-    mention: 'CEMINACE Honors',
+    mention: 'Honors',
     firstRank: '1st',
 
     // Reports tab

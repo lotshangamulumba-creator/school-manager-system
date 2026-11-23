@@ -152,7 +152,7 @@ export const TeacherManagementModal: React.FC<TeacherManagementModalProps> = ({ 
                 <input
                   type="email"
                   required
-                  placeholder="nom@ceminace.cg"
+                  placeholder="nom@ecole.cg"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-white focus:outline-sky-500"

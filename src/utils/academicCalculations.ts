@@ -67,7 +67,7 @@ export function calculateClassAverages(
       const comp =
         g.composition !== undefined ? g.composition : g.dev3 !== undefined ? g.dev3 : 0;
 
-      // Formule Officielle CEMINACE (Congo Brazzaville) :
+      // Formule officielle (Congo Brazzaville) :
       // - Contrôle Continu (CC) = (Note Évaluations + Devoir 1 + Devoir 2) / 3
       // - Moyenne Trimestrielle = (CC + 2 * COMPOSITION) / 3
       const cc = (evalAvg + d1 + d2) / 3;

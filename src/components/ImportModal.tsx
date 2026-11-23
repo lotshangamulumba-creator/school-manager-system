@@ -161,8 +161,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     ];
     const ws = XLSX.utils.aoa_to_sheet(wsData);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Eleves_CEMINACE');
-    XLSX.writeFile(wb, 'Modele_Import_Eleves_CEMINACE.xlsx');
+    XLSX.utils.book_append_sheet(wb, ws, 'Eleves');
+    XLSX.writeFile(wb, 'Modele_Import_Eleves.xlsx');
   };
 
   return (
@@ -219,7 +219,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
               className="text-[#1E3A5F] hover:underline font-semibold flex items-center gap-1 cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
-              Télécharger le modèle Excel modèle CEMINACE (.xlsx)
+              Télécharger le modèle Excel standard (.xlsx)
             </button>
           </div>
 

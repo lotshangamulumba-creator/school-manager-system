@@ -87,7 +87,7 @@ export const StudentModal: React.FC<StudentModalProps> = ({
           <div className="flex items-center gap-2">
             <UserCheck className="w-5 h-5 text-sky-300" />
             <h3 className="font-semibold text-base">
-              {studentToEdit ? "Modifier l'Élève" : 'Inscrire un Nouvel Élève'} (CEMINACE)
+              {studentToEdit ? "Modifier l'Élève" : 'Inscrire un Nouvel Élève'}
             </h3>
           </div>
           <button
