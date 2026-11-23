@@ -324,7 +324,7 @@ class DatabaseEngine {
     const users: DbUser[] = [
       {
         id: 'usr-admin-01',
-        email: process.env.SEED_ADMIN_EMAIL || 'admin@ceminace.cg',
+        email: process.env.SEED_ADMIN_EMAIL || 'admin@ecole.cg',
         passwordHash: adminHash,
         nom: 'NGOUABI',
         prenom: 'Alphonse',
@@ -336,7 +336,7 @@ class DatabaseEngine {
       },
       {
         id: 'usr-prof-01',
-        email: 'prof.math@ceminace.cg',
+        email: 'prof.math@ecole.cg',
         passwordHash: teacherHash,
         nom: 'KOUMBA',
         prenom: 'Jean-Pierre',
@@ -348,7 +348,7 @@ class DatabaseEngine {
       },
       {
         id: 'usr-prof-02',
-        email: 'prof.francais@ceminace.cg',
+        email: 'prof.francais@ecole.cg',
         passwordHash: teacherHash,
         nom: 'MABIALA',
         prenom: 'Véronique',
@@ -366,7 +366,7 @@ class DatabaseEngine {
         userId: 'usr-prof-01',
         nom: 'KOUMBA',
         prenom: 'Jean-Pierre',
-        email: 'prof.math@ceminace.cg',
+        email: 'prof.math@ecole.cg',
         telephone: '+242 05 512 88 44',
         specialite: 'Mathématiques & Informatique',
         statut: true,
@@ -377,7 +377,7 @@ class DatabaseEngine {
         userId: 'usr-prof-02',
         nom: 'MABIALA',
         prenom: 'Véronique',
-        email: 'prof.francais@ceminace.cg',
+        email: 'prof.francais@ecole.cg',
         telephone: '+242 06 901 22 77',
         specialite: 'Français & Philosophie',
         statut: true,
@@ -477,7 +477,7 @@ class DatabaseEngine {
       {
         id: 'log-init-01',
         action: 'SYSTEM_INITIALIZATION',
-        details: 'Initialisation de la base de données relationnelle TIC-TiG pour CEMINACE Brazzaville',
+        details: 'Initialisation de la base de données relationnelle MonPilot',
         createdAt: now
       }
     ];

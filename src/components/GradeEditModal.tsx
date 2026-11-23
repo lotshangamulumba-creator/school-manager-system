@@ -55,7 +55,7 @@ export const GradeEditModal: React.FC<GradeEditModalProps> = ({
 
   // Contrôle Continu (CC) = (Notes Évaluations + Devoir 1 + Devoir 2) / 3
   const cc = (numEval + numD1 + numD2) / 3;
-  // Formule officielle CEMINACE Congo : Moyenne = (CC + 2 * COMPOSITION) / 3
+  // Formule officielle : Moyenne = (CC + 2 * COMPOSITION) / 3
   const computedMoyenne = (cc + 2 * numComp) / 3;
 
   const handleSave = async (e: React.FormEvent) => {
@@ -105,7 +105,7 @@ export const GradeEditModal: React.FC<GradeEditModalProps> = ({
         <form onSubmit={handleSave} className="p-5 space-y-4">
           <div className="bg-sky-50 border border-sky-200 rounded-lg p-3 text-xs text-sky-900 space-y-1">
             <div className="flex justify-between font-semibold">
-              <span>Formule Officielle CEMINACE (Congo) :</span>
+              <span>Formule officielle :</span>
               <span className="text-[#1E3A5F]">{trimester}</span>
             </div>
             <div className="font-mono text-[11px] text-sky-800">

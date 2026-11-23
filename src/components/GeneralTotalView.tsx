@@ -244,7 +244,7 @@ export const GeneralTotalView: React.FC<GeneralTotalViewProps> = ({
           <div className="flex items-center justify-between text-indigo-700 text-xs font-semibold mb-2">
             <span className="flex items-center gap-1.5">
               <FlaskConical className="w-4 h-4" />
-              Major Sciences 🔬
+              Major Sciences
             </span>
             <span className="text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-bold">
               {bestSciClass ? bestSciClass.className : '-'}
@@ -264,7 +264,7 @@ export const GeneralTotalView: React.FC<GeneralTotalViewProps> = ({
           <div className="flex items-center justify-between text-amber-700 text-xs font-semibold mb-2">
             <span className="flex items-center gap-1.5">
               <BookOpen className="w-4 h-4" />
-              Major Littérature 📚
+              Major Littérature
             </span>
             <span className="text-[10px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded font-bold">
               {bestLitClass ? bestLitClass.className : '-'}
@@ -284,7 +284,7 @@ export const GeneralTotalView: React.FC<GeneralTotalViewProps> = ({
           <div className="flex items-center justify-between text-emerald-700 text-xs font-semibold mb-2">
             <span className="flex items-center gap-1.5">
               <Activity className="w-4 h-4" />
-              Major EPS 🏃‍♂️
+              Major EPS
             </span>
             <span className="text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded font-bold">
               {bestEpsClass ? bestEpsClass.className : '-'}
