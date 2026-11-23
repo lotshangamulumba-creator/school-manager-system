@@ -38,6 +38,7 @@ import { AuditBackupModal } from './components/AuditBackupModal';
 import { SchoolSettingsModal } from './components/SchoolSettingsModal';
 import {
   api,
+  ApiSubject,
   ApiGrade,
   LicenseState,
   LicenseStatusResponse,
@@ -58,13 +59,9 @@ import {
   Edit2,
   Trash2,
   Upload,
-  RefreshCw,
   Sparkles,
-  Maximize2,
-  Minimize2,
   Printer,
   FileSpreadsheet,
-  Repeat,
   Languages,
   FileStack,
   Layers,
@@ -78,8 +75,6 @@ import {
   KeyRound,
   Settings2,
 } from 'lucide-react';
-
-const LEVEL_ORDER: SchoolLevel[] = ['Primaire', 'Collège', 'Lycée'];
 
 function mapApiGradesToState(apiGrades: ApiGrade[]): Record<string, StudentGrades> {
   const grades: Record<string, StudentGrades> = {};
@@ -106,13 +101,23 @@ function mapApiGradesToState(apiGrades: ApiGrade[]): Record<string, StudentGrade
   return grades;
 }
 
+function mapApiSubject(subject: ApiSubject): Subject {
+  return {
+    id: subject.id,
+    name: subject.nom,
+    coeff: subject.coeff,
+    specialty:
+      subject.specialty === 'Littérature' || subject.specialty === 'EPS'
+        ? subject.specialty
+        : 'Sciences',
+    level: subject.niveau,
+  };
+}
+
 export default function App() {
   // Langue de l'application (Français / English)
   const [language, setLanguage] = useState<Language>('fr');
   const t = TRANSLATIONS[language];
-
-  // Mode d'affichage : Fenêtre standard 980x683 ou Plein écran
-  const [isWindowedMode, setIsWindowedMode] = useState(false);
 
   // Configuration académique CEMINACE
   const [level, setLevel] = useState<SchoolLevel>('Collège');
@@ -194,24 +199,23 @@ export default function App() {
         }))
       );
 
-      if (backendClasses.length > 0) {
-        const classNames = backendClasses.map((c) => c.nom);
-        setClasses(classNames);
-        setClassIds(Object.fromEntries(backendClasses.map((c) => [c.nom, c.id])));
-      }
-
-      if (backendSubjects.length > 0) {
-        setSubjects(
-          backendSubjects.map((s) => ({
-            id: s.id,
-            name: s.nom,
-            coeff: s.coeff,
-            specialty: s.specialty || 'Sciences',
-            level: (s.niveau as any) || 'Collège',
-            category: s.specialty || 'Sciences',
-          }))
+      const activeClasses = backendClasses.filter((schoolClass) => schoolClass.statut);
+      const levelClasses = activeClasses.filter((schoolClass) => schoolClass.niveau === level);
+      setClasses(levelClasses.map((schoolClass) => schoolClass.nom));
+      setClassIds(Object.fromEntries(activeClasses.map((schoolClass) => [schoolClass.nom, schoolClass.id])));
+      if (levelClasses.length > 0) {
+        setCurrentClass((current) =>
+          levelClasses.some((schoolClass) => schoolClass.nom === current)
+            ? current
+            : levelClasses[0].nom
         );
       }
+
+      setSubjects(
+        backendSubjects
+          .filter((subject) => subject.statut && subject.niveau === level)
+          .map(mapApiSubject)
+      );
     } catch (e) {
       console.warn('[MonPilot] Données locales actives:', e);
     }
@@ -356,7 +360,7 @@ export default function App() {
   const [gradeEditModalData, setGradeEditModalData] = useState<{
     student: Student | null;
     subjectName: string;
-    grades: StudentGrades;
+    grades: Partial<StudentGrades>;
   } | null>(null);
 
   // Calcul dynamique des moyennes et rangs CEMINACE (Congo Brazzaville)
@@ -381,41 +385,37 @@ export default function App() {
     return students.filter((s) => s.className === currentClass);
   }, [students, currentClass]);
 
-  // Changement de niveau scolaire (Primaire, Collège, Lycée)
-  const handleLevelChange = (newLevel: SchoolLevel) => {
-    setLevel(newLevel);
-    const newClasses = CEMINACE_LEVELS[newLevel].classes;
-    setClasses(newClasses);
-    const newFirstClass = newClasses[0] || 'Classe 1';
-    setCurrentClass(newFirstClass);
-    const newSubjects = CEMINACE_LEVELS[newLevel].defaultSubjects;
-    setSubjects(newSubjects);
-    setSelectedSubjectForGrade(newSubjects[0]?.name || '');
+  // Les classes et matières affichées proviennent du serveur afin de garder leurs identifiants persistés.
+  const handleLevelChange = async (newLevel: SchoolLevel) => {
+    try {
+      const [backendClasses, backendSubjects] = await Promise.all([
+        api.getClasses(),
+        api.getSubjects(),
+      ]);
+      const activeClasses = backendClasses.filter((schoolClass) => schoolClass.statut);
+      const levelClasses = activeClasses.filter((schoolClass) => schoolClass.niveau === newLevel);
+      const levelSubjects = backendSubjects.filter(
+        (subject) => subject.statut && subject.niveau === newLevel
+      );
 
-    // Réassigner la classe aux élèves actuels
-    setStudents((prev) => prev.map((s) => ({ ...s, className: newFirstClass })));
+      setLevel(newLevel);
+      setClasses(levelClasses.map((schoolClass) => schoolClass.nom));
+      setClassIds(Object.fromEntries(activeClasses.map((schoolClass) => [schoolClass.nom, schoolClass.id])));
+      setCurrentClass(levelClasses[0]?.nom || '');
+      setSubjects(levelSubjects.map(mapApiSubject));
+      setSelectedSubjectForGrade(levelSubjects[0]?.nom || '');
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Le changement de niveau a échoué.');
+    }
   };
-
-  // Basculer cycliquement entre les niveaux : Primaire -> Collège -> Lycée -> Primaire
-  const handleCycleLevel = () => {
-    const currentIndex = LEVEL_ORDER.indexOf(level);
-    const nextLevel = LEVEL_ORDER[(currentIndex + 1) % LEVEL_ORDER.length];
-    handleLevelChange(nextLevel);
-  };
-
-  // Prochain niveau pour l'indicateur visuel
-  const nextLevel = useMemo(() => {
-    const currentIndex = LEVEL_ORDER.indexOf(level);
-    return LEVEL_ORDER[(currentIndex + 1) % LEVEL_ORDER.length];
-  }, [level]);
 
   // Basculer la langue
   const handleToggleLanguage = () => {
     setLanguage((prev) => (prev === 'fr' ? 'en' : 'fr'));
   };
 
-  // Ajout d'une nouvelle classe
-  const handleAddClass = () => {
+  // Ajout d'une nouvelle classe persistée
+  const handleAddClass = async () => {
     const promptMsg =
       language === 'fr'
         ? `Nom de la nouvelle classe pour le niveau ${level} (ex: 3ème C, Terminale C) :`
@@ -424,19 +424,16 @@ export default function App() {
     if (name && name.trim()) {
       const trimmed = name.trim();
       if (!classes.includes(trimmed)) {
-        const updated = [...classes, trimmed];
-        setClasses(updated);
-        setCurrentClass(trimmed);
+        try {
+          const createdClass = await api.createClass({ nom: trimmed, niveau: level });
+          setClasses((current) => [...current, createdClass.nom]);
+          setClassIds((current) => ({ ...current, [createdClass.nom]: createdClass.id }));
+          setCurrentClass(createdClass.nom);
+        } catch (error) {
+          window.alert(error instanceof Error ? error.message : 'La création de classe a échoué.');
+        }
       }
     }
-  };
-
-  // Basculer cycliquement entre les 3 trimestres
-  const handleCycleTrimester = () => {
-    const trimesters = ['1er Trimestre', '2ème Trimestre', '3ème Trimestre'];
-    const curIdx = trimesters.indexOf(trimester);
-    const nextIdx = (curIdx + 1) % trimesters.length;
-    setTrimester(trimesters[nextIdx]);
   };
 
   // Sauvegarde d'un élève (Ajout ou Modification)
@@ -590,12 +587,6 @@ export default function App() {
     }
   };
 
-  // Recharger données démo CEMINACE
-  const handleResetDemoData = () => {
-    setStudents(INITIAL_STUDENTS);
-    setGrades(generateInitialGrades(INITIAL_STUDENTS, subjects));
-  };
-
   if (isAuthChecking) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 text-white">
@@ -668,64 +659,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-start p-2 md:p-6 text-slate-800 antialiased font-sans">
-      {/* Barre d'information supérieure sur l'application bureau */}
-      <div className="w-full max-w-[1020px] mb-3 flex flex-wrap items-center justify-between text-xs text-slate-300 px-2 gap-2">
-        <div className="flex items-center gap-2">
-          <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="font-semibold text-white">{t.desktopApp}</span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* Bouton choix de la langue (FR / EN) */}
-          <div className="flex items-center bg-slate-800 p-0.5 rounded-md border border-slate-700 text-xs">
-            <Languages className="w-3.5 h-3.5 text-slate-400 ml-1.5 mr-0.5" />
-            <button
-              onClick={() => setLanguage('fr')}
-              className={`px-2 py-0.5 rounded font-bold transition-all cursor-pointer ${
-                language === 'fr'
-                  ? 'bg-sky-500 text-slate-950 shadow-xs'
-                  : 'text-slate-300 hover:text-white'
-              }`}
-              title="Passer en Français"
-            >
-              FR
-            </button>
-            <button
-              onClick={() => setLanguage('en')}
-              className={`px-2 py-0.5 rounded font-bold transition-all cursor-pointer ${
-                language === 'en'
-                  ? 'bg-sky-500 text-slate-950 shadow-xs'
-                  : 'text-slate-300 hover:text-white'
-              }`}
-              title="Switch to English"
-            >
-              EN
-            </button>
-          </div>
-
-          <button
-            onClick={() => setIsWindowedMode(!isWindowedMode)}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 transition-colors cursor-pointer"
-            title={isWindowedMode ? t.fullScreen : t.fixedWindow}
-          >
-            {isWindowedMode ? <Maximize2 className="w-3.5 h-3.5" /> : <Minimize2 className="w-3.5 h-3.5" />}
-            <span className="hidden sm:inline">{isWindowedMode ? t.fullScreen : t.fixedWindow}</span>
-          </button>
-
-          <span className="bg-[#1E3A5F] px-2 py-0.5 rounded text-[11px] font-mono text-sky-200 border border-[#2B4E7C]">
-            980 × 683 px
-          </span>
-        </div>
-      </div>
-
       {/* Cadre de l'application MonPilot School ERP */}
-      <div
-        className={`relative bg-[#F4F7FB] rounded-xl shadow-2xl border border-slate-700 overflow-hidden flex flex-col transition-all duration-300 ${
-          isWindowedMode
-            ? 'w-[980px] h-[683px] shrink-0'
-            : 'w-full max-w-[1020px] min-h-[683px]'
-        }`}
-      >
+      <div className="relative w-full max-w-[1020px] min-h-[683px] bg-[#F4F7FB] rounded-xl shadow-2xl border border-slate-700 overflow-hidden flex flex-col">
         {/* Filigrane d'application : transparent logo "MonPilot" avec miniature école en arrière-plan */}
         <WatermarkBackground schoolProfile={schoolProfile} />
 
@@ -848,19 +783,6 @@ export default function App() {
         {/* 2. Barre d'outils académique & sélection du niveau / classe */}
         <div className="relative z-10 bg-slate-100 border-b border-slate-200 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
           <div className="flex flex-wrap items-center gap-2">
-            {/* Bouton dédié pour BASCULER ENTRE LES NIVEAUX (Demande explicite de l'utilisateur) */}
-            <button
-              onClick={handleCycleLevel}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white hover:bg-sky-50 text-slate-700 hover:text-[#1E3A5F] border border-slate-200 hover:border-sky-300 font-bold transition-all shadow-2xs cursor-pointer text-xs"
-              title={`Basculer cycliquement : Primaire ➔ Collège ➔ Lycée (Niveau actuel : ${level})`}
-            >
-              <Repeat className="w-3.5 h-3.5 text-[#1E3A5F]" />
-              <span>{t.switchLevel}</span>
-              <span className="text-[10px] px-1.5 py-0.5 bg-sky-100 text-[#1E3A5F] rounded-md font-extrabold flex items-center gap-0.5">
-                ➜ {nextLevel}
-              </span>
-            </button>
-
             {/* Sélecteur direct de Niveau Scolaire (Primaire, Collège, Lycée) */}
             <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-200 shadow-2xs">
               <span className="font-bold text-slate-600 px-1 text-[11px]">{t.level} :</span>
@@ -896,36 +818,27 @@ export default function App() {
             </div>
 
             {/* Bouton ajouter classe */}
-            <MidnightButton size="sm" onClick={handleAddClass} icon={<Plus className="w-3.5 h-3.5" />}>
-              {t.addClass}
-            </MidnightButton>
+            {currentUser?.role === 'ADMIN' && (
+              <MidnightButton size="sm" onClick={handleAddClass} icon={<Plus className="w-3.5 h-3.5" />}>
+                {t.addClass}
+              </MidnightButton>
+            )}
 
             {/* Bouton Matières & Coeffs */}
-            <MidnightButton
-              size="sm"
-              variant="outline"
-              onClick={() => setIsSubjectsModalOpen(true)}
-              icon={<BookOpen className="w-3.5 h-3.5" />}
-            >
-              {t.manageSubjects} ({subjects.length})
-            </MidnightButton>
+            {currentUser?.role === 'ADMIN' && (
+              <MidnightButton
+                size="sm"
+                variant="outline"
+                onClick={() => setIsSubjectsModalOpen(true)}
+                icon={<BookOpen className="w-3.5 h-3.5" />}
+              >
+                {t.manageSubjects} ({subjects.length})
+              </MidnightButton>
+            )}
           </div>
 
           {/* Trimestre & Actions rapides */}
           <div className="flex items-center gap-2">
-            {/* Bouton dédié pour BASCULER ENTRE LES TRIMESTRES */}
-            <button
-              onClick={handleCycleTrimester}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs transition-all shadow-2xs cursor-pointer"
-              title={`Basculer : 1er Trimestre ➜ 2ème Trimestre ➜ 3ème Trimestre (Actuel : ${trimester})`}
-            >
-              <Repeat className="w-3.5 h-3.5 text-amber-700" />
-              <span>{t.switchTrimester}</span>
-              <span className="text-[10px] px-1.5 py-0.5 bg-amber-200 text-amber-950 rounded-md font-extrabold">
-                ➜ {trimester === '1er Trimestre' ? '2ème Trim.' : trimester === '2ème Trimestre' ? '3ème Trim.' : '1er Trim.'}
-              </span>
-            </button>
-
             <select
               value={trimester}
               onChange={(e) => setTrimester(e.target.value)}
@@ -936,15 +849,6 @@ export default function App() {
               <option value="3ème Trimestre">{t.thirdTrimester}</option>
             </select>
 
-            <MidnightButton
-              size="sm"
-              onClick={handleResetDemoData}
-              variant="secondary"
-              icon={<RefreshCw className="w-3.5 h-3.5" />}
-              title="Recharger l'effectif modèle CEMINACE"
-            >
-              {t.demoData}
-            </MidnightButton>
           </div>
         </div>
 
@@ -1181,7 +1085,7 @@ export default function App() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <div className="text-[11px] text-slate-600 bg-sky-50 border border-sky-200 px-2.5 py-1 rounded">
+                  <div className="text-[11px] text-sky-950 bg-sky-50 border border-sky-200 px-2.5 py-1 rounded">
                     <strong>Formule CEMINACE :</strong> CC = (Évals + Dev1 + Dev2)/3 • Moy = (CC + 2×COMP)/3
                   </div>
 
@@ -1228,7 +1132,9 @@ export default function App() {
                       currentClassStudents.map((student) => {
                         const keyWithTrim = `${student.id}_${selectedSubjectForGrade}_${trimester}`;
                         const keyDefault = `${student.id}_${selectedSubjectForGrade}`;
-                        const g = grades[keyWithTrim] || grades[keyDefault];
+                        const g =
+                          grades[keyWithTrim] ||
+                          (trimester === '1er Trimestre' ? grades[keyDefault] : undefined);
                         const evalNotes = g?.evaluations ?? g?.eval1 ?? 0;
                         const dev1 = g?.dev1 ?? 0;
                         const dev2 = g?.dev2 ?? 0;
@@ -1246,22 +1152,24 @@ export default function App() {
                               {g ? evalNotes.toFixed(2) : '—'}
                             </td>
                             <td className="py-2 px-2.5 text-center font-mono font-medium text-slate-800">
-                              {dev1.toFixed(2)}
+                              {g ? dev1.toFixed(2) : '—'}
                             </td>
                             <td className="py-2 px-2.5 text-center font-mono font-medium text-slate-800">
-                              {dev2.toFixed(2)}
+                              {g ? dev2.toFixed(2) : '—'}
                             </td>
                             <td className="py-2 px-2.5 text-center font-mono font-bold text-amber-900 bg-amber-50/60">
-                              {comp.toFixed(2)}
+                              {g ? comp.toFixed(2) : '—'}
                             </td>
                             <td className="py-2 px-3 text-center font-bold text-[#1E3A5F] bg-sky-50/50">
-                              <span
-                                className={`inline-block px-2 py-0.5 rounded ${
-                                  subjectAvg >= 10 ? 'text-sky-950 font-black' : 'text-rose-700 font-bold'
-                                }`}
-                              >
-                                {subjectAvg.toFixed(2)}
-                              </span>
+                              {g ? (
+                                <span
+                                  className={`inline-block px-2 py-0.5 rounded ${
+                                    subjectAvg >= 10 ? 'text-sky-950 font-black' : 'text-rose-700 font-bold'
+                                  }`}
+                                >
+                                  {subjectAvg.toFixed(2)}
+                                </span>
+                              ) : '—'}
                             </td>
                             <td className="py-2 px-3 text-right">
                               <MidnightButton
@@ -1271,15 +1179,17 @@ export default function App() {
                                   setGradeEditModalData({
                                     student,
                                     subjectName: selectedSubjectForGrade,
-                                    grades: {
-                                      evaluations: evalNotes,
-                                      dev1,
-                                      dev2,
-                                      composition: comp,
-                                      eval1: evalNotes,
-                                      eval2: evalNotes,
-                                      dev3: comp,
-                                    },
+                                    grades: g
+                                      ? {
+                                          evaluations: evalNotes,
+                                          dev1,
+                                          dev2,
+                                          composition: comp,
+                                          eval1: evalNotes,
+                                          eval2: evalNotes,
+                                          dev3: comp,
+                                        }
+                                      : {},
                                   });
                                 }}
                               >
@@ -1304,7 +1214,7 @@ export default function App() {
                 <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
                   <span className="text-slate-500 block">{t.evaluatedCount}</span>
                   <span className="text-base font-bold text-[#1E3A5F]">
-                    {classResults.length} {t.enrolledStudents}
+                    {classResults.length} {t.evaluatedCount.toLowerCase()}
                   </span>
                 </div>
                 <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
@@ -1314,15 +1224,15 @@ export default function App() {
                       ? (
                           classResults.reduce((acc, r) => acc + r.generalAvg, 0) / classResults.length
                         ).toFixed(2)
-                      : '0.00'}{' '}
-                    / 20
+                      : '—'}{classResults.length > 0 ? ' / 20' : ''}
                   </span>
                 </div>
                 <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
                   <span className="text-slate-500 block">{t.highestAverage}</span>
                   <span className="text-base font-bold text-emerald-600">
-                    {classResults.length > 0 ? Math.max(...classResults.map((r) => r.generalAvg)).toFixed(2) : '0.00'}{' '}
-                    / 20
+                    {classResults.length > 0
+                      ? `${Math.max(...classResults.map((r) => r.generalAvg)).toFixed(2)} / 20`
+                      : '—'}
                   </span>
                 </div>
                 <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
@@ -1371,16 +1281,16 @@ export default function App() {
                           {res.student.lastName.toUpperCase()} {res.student.firstName}
                         </td>
                         <td className="py-2.5 px-2.5 text-center bg-sky-50/40 font-mono">
-                          <span className="font-bold text-slate-800">{res.sciencesAvg.toFixed(2)}</span>
-                          <span className="text-[10px] text-slate-500 ml-1">({res.sciencesRank}e)</span>
+                          <span className="font-bold text-slate-800">{res.sciencesAvg?.toFixed(2) ?? '—'}</span>
+                          {res.sciencesRank !== null && <span className="text-[10px] text-slate-500 ml-1">({res.sciencesRank}e)</span>}
                         </td>
                         <td className="py-2.5 px-2.5 text-center bg-indigo-50/40 font-mono">
-                          <span className="font-bold text-slate-800">{res.literatureAvg.toFixed(2)}</span>
-                          <span className="text-[10px] text-slate-500 ml-1">({res.literatureRank}e)</span>
+                          <span className="font-bold text-slate-800">{res.literatureAvg?.toFixed(2) ?? '—'}</span>
+                          {res.literatureRank !== null && <span className="text-[10px] text-slate-500 ml-1">({res.literatureRank}e)</span>}
                         </td>
                         <td className="py-2.5 px-2.5 text-center bg-emerald-50/40 font-mono">
-                          <span className="font-bold text-slate-800">{res.epsAvg.toFixed(2)}</span>
-                          <span className="text-[10px] text-slate-500 ml-1">({res.epsRank}e)</span>
+                          <span className="font-bold text-slate-800">{res.epsAvg?.toFixed(2) ?? '—'}</span>
+                          {res.epsRank !== null && <span className="text-[10px] text-slate-500 ml-1">({res.epsRank}e)</span>}
                         </td>
                         <td className="py-2.5 px-3 text-center font-extrabold text-sm text-[#1E3A5F] bg-sky-100/50 font-mono">
                           {res.generalAvg.toFixed(2)} / 20
@@ -1414,7 +1324,7 @@ export default function App() {
                         </span>
                       </div>
                       <p className="text-xs text-slate-600 mt-0.5">
-                        {currentClass} • {trimester} • {classResults.length} {t.enrolledStudents}
+                        {currentClass} • {trimester} • {classResults.length} {t.evaluatedCount.toLowerCase()}
                       </p>
                     </div>
                   </div>
@@ -1568,7 +1478,6 @@ export default function App() {
             <GeneralTotalView
               stats={establishmentStats}
               trimester={trimester}
-              onCycleTrimester={handleCycleTrimester}
               isFrench={language === 'fr'}
               schoolProfile={schoolProfile}
             />
@@ -1587,8 +1496,6 @@ export default function App() {
             </span>
           </div>
           <div className="flex items-center gap-3">
-            <span className="hidden sm:inline">GUI : 980 × 683 px</span>
-            <span>•</span>
             <span className="hidden font-semibold text-[#1E3A5F] md:inline">{t.statusWatermark}</span>
           </div>
         </div>
@@ -1610,6 +1517,7 @@ export default function App() {
       <SubjectsModal
         isOpen={isSubjectsModalOpen}
         onClose={() => setIsSubjectsModalOpen(false)}
+        level={level}
         subjects={subjects}
         onSaveSubjects={(newSubjects) => {
           setSubjects(newSubjects);

@@ -144,7 +144,7 @@ export function renderStudentBulletinPage(
     sr.devAvg.toFixed(2),
     sr.subjectAvg.toFixed(2),
     sr.points.toFixed(2),
-    `${sr.rank}e / ${classTotalStudents}`,
+    `${sr.rank}e / ${sr.rankedStudentCount}`,
     sr.appreciation,
   ]);
 
@@ -186,25 +186,29 @@ export function renderStudentBulletinPage(
   const tableFinalY = (doc as any).lastAutoTable?.finalY || 160;
 
   // Specialty Breakdown & General Summary Table
+  const specialtyAverage = (average: number | null) =>
+    average === null ? '' : `${average.toFixed(2)} / 20`;
+  const specialtyRank = (rank: number | null, rankedCount: number) =>
+    rank === null ? '' : `${rank}e ${isEn ? 'out of' : 'sur'} ${rankedCount}`;
   const summaryRows = [
     [
       isEn ? 'SCIENCES Specialty (Math, Physics, SVT)' : 'Spécialité SCIENCES (Maths, Phys., SVT)',
-      `${res.sciencesAvg.toFixed(2)} / 20`,
-      `${res.sciencesRank}e ${isEn ? 'out of' : 'sur'} ${classTotalStudents}`,
+      specialtyAverage(res.sciencesAvg),
+      specialtyRank(res.sciencesRank, res.sciencesStudentCount),
       isEn ? 'Total Points :' : 'Total des Points :',
       `${res.totalPoints.toFixed(2)}`,
     ],
     [
       isEn ? 'LITERATURE Specialty (French, English, Hist-Geo)' : 'Spécialité LITTÉRATURE (Français, Anglais, H-G)',
-      `${res.literatureAvg.toFixed(2)} / 20`,
-      `${res.literatureRank}e ${isEn ? 'out of' : 'sur'} ${classTotalStudents}`,
+      specialtyAverage(res.literatureAvg),
+      specialtyRank(res.literatureRank, res.literatureStudentCount),
       isEn ? 'Total Coefficients :' : 'Total Coefficients :',
       `${res.totalCoeff}`,
     ],
     [
       isEn ? 'PHYSICAL EDUCATION Specialty (PE)' : 'Spécialité SPORTIVE (EPS)',
-      `${res.epsAvg.toFixed(2)} / 20`,
-      `${res.epsRank}e ${isEn ? 'out of' : 'sur'} ${classTotalStudents}`,
+      specialtyAverage(res.epsAvg),
+      specialtyRank(res.epsRank, res.epsStudentCount),
       isEn ? 'TRIMESTER AVERAGE :' : 'MOYENNE TRIMESTRIELLE :',
       `${res.generalAvg.toFixed(2)} / 20`,
     ],
@@ -415,9 +419,9 @@ export function generateClassResultsPDF(
     `${r.generalRank}e`,
     r.student.id,
     `${r.student.lastName.toUpperCase()} ${r.student.firstName}`,
-    `${r.sciencesAvg.toFixed(2)} (${r.sciencesRank}e)`,
-    `${r.literatureAvg.toFixed(2)} (${r.literatureRank}e)`,
-    `${r.epsAvg.toFixed(2)} (${r.epsRank}e)`,
+    r.sciencesAvg === null ? '' : `${r.sciencesAvg.toFixed(2)} (${r.sciencesRank}e)`,
+    r.literatureAvg === null ? '' : `${r.literatureAvg.toFixed(2)} (${r.literatureRank}e)`,
+    r.epsAvg === null ? '' : `${r.epsAvg.toFixed(2)} (${r.epsRank}e)`,
     `${r.generalAvg.toFixed(2)} / 20`,
     r.mention.split('(')[0].trim(),
   ]);

@@ -47,6 +47,11 @@ export const GradeEditModal: React.FC<GradeEditModalProps> = ({
   const numD1 = Math.min(20, Math.max(0, parseFloat(dev1) || 0));
   const numD2 = Math.min(20, Math.max(0, parseFloat(dev2) || 0));
   const numComp = Math.min(20, Math.max(0, parseFloat(composition) || 0));
+  const hasValidGrades = [evaluations, dev1, dev2, composition].every((value) => {
+    if (value.trim() === '') return false;
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) && numericValue >= 0 && numericValue <= 20;
+  });
 
   // Contrôle Continu (CC) = (Notes Évaluations + Devoir 1 + Devoir 2) / 3
   const cc = (numEval + numD1 + numD2) / 3;
@@ -199,16 +204,16 @@ export const GradeEditModal: React.FC<GradeEditModalProps> = ({
           <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 grid grid-cols-3 text-center text-xs gap-1">
             <div>
               <span className="text-slate-500 block text-[11px]">Contrôle Continu</span>
-              <span className="font-bold text-slate-800 text-sm">{cc.toFixed(2)}</span>
+              <span className="font-bold text-slate-800 text-sm">{hasValidGrades ? cc.toFixed(2) : '—'}</span>
             </div>
             <div>
               <span className="text-amber-700 block text-[11px]">Composition</span>
-              <span className="font-bold text-amber-800 text-sm">{numComp.toFixed(2)}</span>
+              <span className="font-bold text-amber-800 text-sm">{hasValidGrades ? numComp.toFixed(2) : '—'}</span>
             </div>
             <div className="border-l border-slate-200 pl-2">
               <span className="text-[#1E3A5F] font-semibold block text-[11px]">Moyenne Finale</span>
               <span className="font-extrabold text-[#1E3A5F] text-base">
-                {computedMoyenne.toFixed(2)} / 20
+                {hasValidGrades ? `${computedMoyenne.toFixed(2)} / 20` : '—'}
               </span>
             </div>
           </div>

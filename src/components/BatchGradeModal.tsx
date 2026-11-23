@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Student, StudentGrades, Subject } from '../types';
 import { MidnightButton } from './MidnightButton';
 import { X, Calculator, Award, Save, CheckCircle2, AlertCircle } from 'lucide-react';
+import { parseBatchGradeInput } from '../utils/gradeInput';
 
 interface BatchGradeModalProps {
   isOpen: boolean;
@@ -46,7 +47,9 @@ export const BatchGradeModal: React.FC<BatchGradeModalProps> = ({
     classStudents.forEach((student) => {
       const g =
         gradesMap[`${student.id}_${selectedSubject.name}_${trimester}`] ||
-        gradesMap[`${student.id}_${selectedSubject.name}`];
+        (trimester === '1er Trimestre'
+          ? gradesMap[`${student.id}_${selectedSubject.name}`]
+          : undefined);
 
       const evalVal = g?.evaluations ?? g?.eval1;
       const d1Val = g?.dev1;
@@ -76,7 +79,7 @@ export const BatchGradeModal: React.FC<BatchGradeModalProps> = ({
     setLocalRows((prev) => ({
       ...prev,
       [studentId]: {
-        ...(prev[studentId] || { evalNote: '10', dev1: '10', dev2: '10', comp: '10' }),
+        ...(prev[studentId] || { evalNote: '', dev1: '', dev2: '', comp: '' }),
         [field]: value,
       },
     }));
@@ -85,39 +88,33 @@ export const BatchGradeModal: React.FC<BatchGradeModalProps> = ({
   const handleSaveAll = async (e: React.FormEvent) => {
     e.preventDefault();
     const updates: Record<string, StudentGrades> = {};
+    setSaveError(null);
 
-    classStudents.forEach((student) => {
-      const row = localRows[student.id] || {
-        evalNote: '10',
-        dev1: '10',
-        dev2: '10',
-        comp: '10',
-      };
-
-      const eNum = Math.min(20, Math.max(0, parseFloat(row.evalNote) || 0));
-      const d1Num = Math.min(20, Math.max(0, parseFloat(row.dev1) || 0));
-      const d2Num = Math.min(20, Math.max(0, parseFloat(row.dev2) || 0));
-      const compNum = Math.min(20, Math.max(0, parseFloat(row.comp) || 0));
-
-      const gradeObj: StudentGrades = {
-        evaluations: eNum,
-        dev1: d1Num,
-        dev2: d2Num,
-        composition: compNum,
-        eval1: eNum,
-        eval2: eNum,
-        dev3: compNum,
-      };
+    for (const student of classStudents) {
+      const row = localRows[student.id] || { evalNote: '', dev1: '', dev2: '', comp: '' };
+      let gradeObj: StudentGrades | null;
+      try {
+        gradeObj = parseBatchGradeInput(row);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : 'les notes sont invalides.';
+        setSaveError(`${student.lastName} ${student.firstName} : ${reason}`);
+        return;
+      }
+      if (!gradeObj) continue;
 
       const keyWithTrim = `${student.id}_${selectedSubject.name}_${trimester}`;
       updates[keyWithTrim] = gradeObj;
       if (trimester === '1er Trimestre') {
         updates[`${student.id}_${selectedSubject.name}`] = gradeObj;
       }
-    });
+    }
+
+    if (Object.keys(updates).length === 0) {
+      setSaveError('Saisissez au moins une note avant l’enregistrement.');
+      return;
+    }
 
     setIsSaving(true);
-    setSaveError(null);
     try {
       await onSaveBatch(updates);
       setSavedSuccess(true);
@@ -209,10 +206,10 @@ export const BatchGradeModal: React.FC<BatchGradeModalProps> = ({
                 <tbody className="divide-y divide-slate-100">
                   {classStudents.map((student) => {
                     const row = localRows[student.id] || {
-                      evalNote: '10',
-                      dev1: '10',
-                      dev2: '10',
-                      comp: '10',
+                      evalNote: '',
+                      dev1: '',
+                      dev2: '',
+                      comp: '',
                     };
 
                     const eVal = Math.min(20, Math.max(0, parseFloat(row.evalNote) || 0));
@@ -222,6 +219,11 @@ export const BatchGradeModal: React.FC<BatchGradeModalProps> = ({
 
                     const cc = (eVal + d1Val + d2Val) / 3;
                     const computedAvg = (cc + 2 * compVal) / 3;
+                    const hasValidGrades = [row.evalNote, row.dev1, row.dev2, row.comp].every((value) => {
+                      if (value.trim() === '') return false;
+                      const numericValue = Number(value);
+                      return Number.isFinite(numericValue) && numericValue >= 0 && numericValue <= 20;
+                    });
 
                     return (
                       <tr key={student.id} className="hover:bg-slate-50/80 transition-colors">
@@ -242,7 +244,6 @@ export const BatchGradeModal: React.FC<BatchGradeModalProps> = ({
                             value={row.evalNote}
                             onChange={(e) => handleRowChange(student.id, 'evalNote', e.target.value)}
                             className="w-20 text-center px-2 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-[#1E3A5F] outline-none"
-                            required
                           />
                         </td>
 
@@ -256,7 +257,6 @@ export const BatchGradeModal: React.FC<BatchGradeModalProps> = ({
                             value={row.dev1}
                             onChange={(e) => handleRowChange(student.id, 'dev1', e.target.value)}
                             className="w-18 text-center px-2 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-[#1E3A5F] outline-none"
-                            required
                           />
                         </td>
 
@@ -270,7 +270,6 @@ export const BatchGradeModal: React.FC<BatchGradeModalProps> = ({
                             value={row.dev2}
                             onChange={(e) => handleRowChange(student.id, 'dev2', e.target.value)}
                             className="w-18 text-center px-2 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-[#1E3A5F] outline-none"
-                            required
                           />
                         </td>
 
@@ -284,23 +283,26 @@ export const BatchGradeModal: React.FC<BatchGradeModalProps> = ({
                             value={row.comp}
                             onChange={(e) => handleRowChange(student.id, 'comp', e.target.value)}
                             className="w-24 text-center px-2 py-1 text-xs font-bold text-amber-950 border border-amber-300 bg-amber-50/80 rounded focus:ring-1 focus:ring-amber-600 outline-none"
-                            required
                           />
                         </td>
 
                         {/* Moyenne Calculée */}
                         <td className="py-2 px-2 text-center bg-sky-50/50 font-bold">
-                          <span
-                            className={`inline-block px-2 py-0.5 rounded text-xs ${
-                              computedAvg >= 14
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : computedAvg >= 10
-                                ? 'bg-sky-100 text-sky-800'
-                                : 'bg-rose-100 text-rose-800'
-                            }`}
-                          >
-                            {computedAvg.toFixed(2)}
-                          </span>
+                          {hasValidGrades ? (
+                            <span
+                              className={`inline-block px-2 py-0.5 rounded text-xs ${
+                                computedAvg >= 14
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : computedAvg >= 10
+                                  ? 'bg-sky-100 text-sky-800'
+                                  : 'bg-rose-100 text-rose-800'
+                              }`}
+                            >
+                              {computedAvg.toFixed(2)}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
                         </td>
                       </tr>
                     );

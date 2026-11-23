@@ -24,12 +24,12 @@ export interface ComputedStudentResult {
   generalAvg: number;
   generalRank: number;
   isExAequo?: boolean;
-  sciencesAvg: number;
-  sciencesRank: number;
-  literatureAvg: number;
-  literatureRank: number;
-  epsAvg: number;
-  epsRank: number;
+  sciencesAvg: number | null;
+  sciencesRank: number | null;
+  literatureAvg: number | null;
+  literatureRank: number | null;
+  epsAvg: number | null;
+  epsRank: number | null;
   mention: string;
   decision: string;
 }
@@ -62,16 +62,21 @@ export function computeClassResults(
 
   if (students.length === 0) return [];
 
-  // Map des notes pour recherche rapide : [studentId][subjectId] -> DbGrade
+  // Map des notes pour recherche rapide : [studentId][subjectId] -> DbGrade valide.
   const gradeMap = new Map<string, DbGrade>();
   data.grades
-    .filter(g => g.classId === classId && g.term === term)
+    .filter(g =>
+      g.classId === classId &&
+      g.term === term &&
+      [g.evaluations, g.dev1, g.dev2, g.composition].every(
+        note => Number.isFinite(note) && note >= 0 && note <= 20
+      )
+    )
     .forEach(g => {
       gradeMap.set(`${g.studentId}_${g.subjectId}`, g);
     });
 
-  // Calcul initial pour chaque élève
-  const studentResults: ComputedStudentResult[] = students.map(student => {
+  const studentResults: ComputedStudentResult[] = students.flatMap(student => {
     let totalPoints = 0;
     let totalCoeff = 0;
     let sciencesPoints = 0;
@@ -81,12 +86,13 @@ export function computeClassResults(
     let epsPoints = 0;
     let epsCoeff = 0;
 
-    const subjectResults: ComputedSubjectResult[] = subjects.map(subject => {
+    const subjectResults: ComputedSubjectResult[] = subjects.flatMap(subject => {
       const g = gradeMap.get(`${student.id}_${subject.id}`);
-      const ev = g ? g.evaluations : 0;
-      const d1 = g ? g.dev1 : 0;
-      const d2 = g ? g.dev2 : 0;
-      const comp = g ? g.composition : 0;
+      if (!g) return [];
+      const ev = g.evaluations;
+      const d1 = g.dev1;
+      const d2 = g.dev2;
+      const comp = g.composition;
 
       const { cc, subjectAvg } = computeCeminaceGrades(ev, d1, d2, comp);
       const points = Math.round(subjectAvg * subject.coeff * 100) / 100;
@@ -129,9 +135,11 @@ export function computeClassResults(
     });
 
     const generalAvg = totalCoeff > 0 ? Math.round((totalPoints / totalCoeff) * 100) / 100 : 0;
-    const sciencesAvg = sciencesCoeff > 0 ? Math.round((sciencesPoints / sciencesCoeff) * 100) / 100 : 0;
-    const literatureAvg = litCoeff > 0 ? Math.round((litPoints / litCoeff) * 100) / 100 : 0;
-    const epsAvg = epsCoeff > 0 ? Math.round((epsPoints / epsCoeff) * 100) / 100 : 0;
+    if (subjectResults.length === 0) return [];
+
+    const sciencesAvg = sciencesCoeff > 0 ? Math.round((sciencesPoints / sciencesCoeff) * 100) / 100 : null;
+    const literatureAvg = litCoeff > 0 ? Math.round((litPoints / litCoeff) * 100) / 100 : null;
+    const epsAvg = epsCoeff > 0 ? Math.round((epsPoints / epsCoeff) * 100) / 100 : null;
     const { mention, decision } = getMention(generalAvg);
 
     return {
@@ -142,11 +150,11 @@ export function computeClassResults(
       generalAvg,
       generalRank: 1,
       sciencesAvg,
-      sciencesRank: 1,
+      sciencesRank: null,
       literatureAvg,
-      literatureRank: 1,
+      literatureRank: null,
       epsAvg,
-      epsRank: 1,
+      epsRank: null,
       mention,
       decision
     };
@@ -169,11 +177,26 @@ export function computeClassResults(
     }
   });
 
+  const assignSpecialtyRanks = (
+    getAverage: (result: ComputedStudentResult) => number | null,
+    setRank: (result: ComputedStudentResult, rank: number) => void
+  ) => {
+    studentResults
+      .filter(result => getAverage(result) !== null)
+      .sort((a, b) => (getAverage(b) ?? 0) - (getAverage(a) ?? 0))
+      .forEach((result, index) => setRank(result, index + 1));
+  };
+  assignSpecialtyRanks((result) => result.sciencesAvg, (result, rank) => { result.sciencesRank = rank; });
+  assignSpecialtyRanks((result) => result.literatureAvg, (result, rank) => { result.literatureRank = rank; });
+  assignSpecialtyRanks((result) => result.epsAvg, (result, rank) => { result.epsRank = rank; });
+
   // Classement par matière
   subjects.forEach(subject => {
-    const sortedForSubj = [...studentResults].sort((a, b) => {
-      const aSub = a.subjectResults.find(s => s.subjectId === subject.id)?.subjectAvg || 0;
-      const bSub = b.subjectResults.find(s => s.subjectId === subject.id)?.subjectAvg || 0;
+    const sortedForSubj = studentResults
+      .filter(result => result.subjectResults.some(subjectResult => subjectResult.subjectId === subject.id))
+      .sort((a, b) => {
+      const aSub = a.subjectResults.find(s => s.subjectId === subject.id)?.subjectAvg ?? 0;
+      const bSub = b.subjectResults.find(s => s.subjectId === subject.id)?.subjectAvg ?? 0;
       return bSub - aSub;
     });
 

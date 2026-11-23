@@ -22,6 +22,7 @@ export interface Subject {
   name: string;
   coeff: number;
   specialty: Specialty;
+  level?: SchoolLevel;
 }
 
 export interface Student {
@@ -67,6 +68,7 @@ export interface SubjectResult {
   subjectAvg: number;
   points: number;
   rank: number;
+  rankedStudentCount: number;
   appreciation: string;
 }
 
@@ -74,9 +76,12 @@ export interface ClassSpecialtyStat {
   level: SchoolLevel;
   className: string;
   studentCount: number;
-  sciencesAvg: number;
-  literatureAvg: number;
-  epsAvg: number;
+  sciencesAvg: number | null;
+  sciencesStudentCount: number;
+  literatureAvg: number | null;
+  literatureStudentCount: number;
+  epsAvg: number | null;
+  epsStudentCount: number;
   generalAvg: number;
   bestStudentName: string;
   bestStudentAvg: number;
@@ -86,9 +91,12 @@ export interface LevelSpecialtyStat {
   level: SchoolLevel;
   totalStudents: number;
   classesCount: number;
-  sciencesAvg: number;
-  literatureAvg: number;
-  epsAvg: number;
+  sciencesAvg: number | null;
+  sciencesStudentCount: number;
+  literatureAvg: number | null;
+  literatureStudentCount: number;
+  epsAvg: number | null;
+  epsStudentCount: number;
   generalAvg: number;
   classes: ClassSpecialtyStat[];
 }
@@ -97,9 +105,12 @@ export interface EstablishmentSpecialtyStat {
   trimester: string;
   totalStudents: number;
   totalClasses: number;
-  sciencesAvg: number;
-  literatureAvg: number;
-  epsAvg: number;
+  sciencesAvg: number | null;
+  sciencesStudentCount: number;
+  literatureAvg: number | null;
+  literatureStudentCount: number;
+  epsAvg: number | null;
+  epsStudentCount: number;
   generalAvg: number;
   levels: LevelSpecialtyStat[];
 }
@@ -111,11 +122,14 @@ export interface StudentTrimesterResult {
   totalCoeff: number;
   generalAvg: number;
   generalRank: number;
-  sciencesAvg: number;
-  sciencesRank: number;
-  literatureAvg: number;
-  literatureRank: number;
-  epsAvg: number;
-  epsRank: number;
+  sciencesAvg: number | null;
+  sciencesRank: number | null;
+  sciencesStudentCount: number;
+  literatureAvg: number | null;
+  literatureRank: number | null;
+  literatureStudentCount: number;
+  epsAvg: number | null;
+  epsRank: number | null;
+  epsStudentCount: number;
   mention: string;
 }

@@ -5,6 +5,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { SignedSchoolLicense } from './licensing.js';
 import { DEFAULT_SCHOOL_PROFILE } from '../data/schoolProfile.js';
+import { CEMINACE_LEVELS } from '../data/ceminaceDefaults.js';
 import { SchoolProfile } from '../types.js';
 
 export interface DbUser {
@@ -149,6 +150,31 @@ const DATA_DIR = path.dirname(DB_FILE);
 class DatabaseEngine {
   private data: SchoolDatabase;
 
+  private addDefaultSubjectsForMissingLevels(subjects: DbSubject[], createdAt: string): DbSubject[] {
+    const levelCodes: Record<DbClass['niveau'], string> = {
+      Primaire: 'PRI',
+      Collège: 'COL',
+      Lycée: 'LYC',
+    };
+
+    return (['Primaire', 'Collège', 'Lycée'] as const).reduce((result, niveau) => {
+      if (result.some(subject => subject.niveau === niveau)) return result;
+
+      const defaults = CEMINACE_LEVELS[niveau].defaultSubjects.map((subject, index): DbSubject => ({
+        id: `sub-default-${subject.id}`,
+        nom: subject.name,
+        code: `${levelCodes[niveau]}-${index + 1}`,
+        niveau,
+        specialty: subject.specialty,
+        coeff: subject.coeff,
+        statut: true,
+        createdAt,
+      }));
+
+      return [...result, ...defaults];
+    }, [...subjects]);
+  }
+
   constructor() {
     this.ensureDataDir();
     this.data = this.loadOrInit();
@@ -171,6 +197,22 @@ class DatabaseEngine {
       }
       if (parsed && Array.isArray(parsed.users) && Array.isArray(parsed.students)) {
         let migrated = false;
+        if (!Array.isArray(parsed.subjects)) {
+          parsed.subjects = [];
+          migrated = true;
+        }
+        if (typeof parsed.version !== 'number') {
+          parsed.version = 1;
+          migrated = true;
+        }
+        if (parsed.version < 2) {
+          parsed.subjects = this.addDefaultSubjectsForMissingLevels(
+            parsed.subjects,
+            new Date().toISOString()
+          );
+          parsed.version = 2;
+          migrated = true;
+        }
         if (typeof parsed.schoolId !== 'string' || parsed.schoolId.length === 0) {
           parsed.schoolId = crypto.randomUUID();
           migrated = true;
@@ -382,6 +424,7 @@ class DatabaseEngine {
       { id: 'sub-ang', nom: 'Anglais', code: 'ANG', niveau: 'Collège', specialty: 'Littérature', coeff: 2, statut: true, createdAt: now },
       { id: 'sub-eps', nom: 'Éducation Physique et Sportive (EPS)', code: 'EPS', niveau: 'Collège', specialty: 'EPS', coeff: 2, statut: true, createdAt: now }
     ];
+    const allLevelSubjects = this.addDefaultSubjectsForMissingLevels(subjects, now);
 
     const students: DbStudent[] = seedDemoData ? [
       { id: 'CEM-001', matricule: 'CEM-001', nom: 'MOUKOKO', prenom: 'Grace', sexe: 'F', dateNaissance: '12/04/2010', lieuNaissance: 'Brazzaville', parentPhone: '+242 06 654 32 10', classId: 'cls-6a', className: '6ème A', statut: true, createdAt: now, updatedAt: now },
@@ -440,7 +483,7 @@ class DatabaseEngine {
     ];
 
     return {
-      version: 1,
+      version: 2,
       schoolId: crypto.randomUUID(),
       establishmentName: DEFAULT_SCHOOL_PROFILE.schoolName,
       establishmentCity: DEFAULT_SCHOOL_PROFILE.city,
@@ -449,7 +492,7 @@ class DatabaseEngine {
       users,
       teachers,
       classes,
-      subjects,
+      subjects: allLevelSubjects,
       students,
       grades,
       auditLogs,

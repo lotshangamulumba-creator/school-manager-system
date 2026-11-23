@@ -5,11 +5,7 @@ export const TRANSLATIONS = {
     appTitle: 'MonPilot School ERP',
     schoolName: 'Établissement scolaire',
     schoolLocation: 'Ville et pays',
-    desktopApp: 'Application Bureau MonPilot School ERP (Tkinter)',
-    fixedWindow: 'Format Fixe 980x683 px',
-    fullScreen: 'Mode Plein Écran',
     level: 'Cycle / Niveau',
-    switchLevel: 'Basculer Niveau',
     currentClass: 'Classe',
     addClass: '+ Classe',
     manageSubjects: 'Matières & Coeffs',
@@ -17,7 +13,6 @@ export const TRANSLATIONS = {
     firstTrimester: '1er Trimestre',
     secondTrimester: '2ème Trimestre',
     thirdTrimester: '3ème Trimestre',
-    demoData: 'Exemple',
     language: 'Langue',
     langFr: 'Français',
     langEn: 'English',
@@ -31,7 +26,6 @@ export const TRANSLATIONS = {
     tabPython: 'Code Python (.py)',
 
     // Actions & Tools
-    switchTrimester: 'Basculer Trimestre',
     enterGradesButton: '✍️ Saisir les Notes',
 
     // Students tab
@@ -103,11 +97,7 @@ export const TRANSLATIONS = {
     appTitle: 'MonPilot School ERP',
     schoolName: 'School',
     schoolLocation: 'City and country',
-    desktopApp: 'MonPilot School ERP Desktop Application (Tkinter)',
-    fixedWindow: 'Fixed 980x683 px',
-    fullScreen: 'Full Screen Mode',
     level: 'Cycle / Level',
-    switchLevel: 'Switch Level',
     currentClass: 'Class',
     addClass: '+ Class',
     manageSubjects: 'Subjects & Coeffs',
@@ -115,7 +105,6 @@ export const TRANSLATIONS = {
     firstTrimester: '1st Trimester',
     secondTrimester: '2nd Trimester',
     thirdTrimester: '3rd Trimester',
-    demoData: 'Demo Data',
     language: 'Language',
     langFr: 'Français',
     langEn: 'English',
@@ -129,7 +118,6 @@ export const TRANSLATIONS = {
     tabPython: 'Python Code (.py)',
 
     // Actions & Tools
-    switchTrimester: 'Switch Trimester',
     enterGradesButton: '✍️ Enter Grades',
 
     // Students tab

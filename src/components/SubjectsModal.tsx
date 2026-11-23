@@ -1,18 +1,34 @@
-import React, { useState } from 'react';
-import { Subject, Specialty } from '../types';
+import React, { useEffect, useState } from 'react';
+import { Subject, Specialty, SchoolLevel } from '../types';
 import { MidnightButton } from './MidnightButton';
 import { X, BookOpen, Plus, Trash2 } from 'lucide-react';
+import { api, ApiSubject } from '../services/api';
 
 interface SubjectsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  level: SchoolLevel;
   subjects: Subject[];
   onSaveSubjects: (newSubjects: Subject[]) => void;
+}
+
+function mapSubject(subject: ApiSubject): Subject {
+  return {
+    id: subject.id,
+    name: subject.nom,
+    coeff: subject.coeff,
+    specialty:
+      subject.specialty === 'Littérature' || subject.specialty === 'EPS'
+        ? subject.specialty
+        : 'Sciences',
+    level: subject.niveau,
+  };
 }
 
 export const SubjectsModal: React.FC<SubjectsModalProps> = ({
   isOpen,
   onClose,
+  level,
   subjects,
   onSaveSubjects,
 }) => {
@@ -20,6 +36,12 @@ export const SubjectsModal: React.FC<SubjectsModalProps> = ({
   const [newName, setNewName] = useState('');
   const [newCoeff, setNewCoeff] = useState('2');
   const [newSpecialty, setNewSpecialty] = useState<Specialty>('Sciences');
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) setList(subjects);
+  }, [isOpen, subjects]);
 
   if (!isOpen) return null;
 
@@ -27,37 +49,85 @@ export const SubjectsModal: React.FC<SubjectsModalProps> = ({
     e.preventDefault();
     if (!newName.trim()) return;
 
-    const coeffNum = Math.max(1, parseInt(newCoeff, 10) || 1);
-    const newSubject: Subject = {
-      id: `sub_${Date.now()}`,
-      name: newName.trim(),
-      coeff: coeffNum,
-      specialty: newSpecialty,
+    const add = async () => {
+      setIsSaving(true);
+      setSaveError(null);
+      try {
+        const created = await api.createSubject({
+          nom: newName.trim(),
+          code: `SUB-${Date.now()}`,
+          niveau: level,
+          specialty: newSpecialty,
+          coeff: Math.max(1, parseInt(newCoeff, 10) || 1),
+        });
+        const updated = [...list, mapSubject(created)];
+        setList(updated);
+        onSaveSubjects(updated);
+        setNewName('');
+        setNewCoeff('2');
+      } catch (error) {
+        setSaveError(error instanceof Error ? error.message : 'La création de matière a échoué.');
+      } finally {
+        setIsSaving(false);
+      }
     };
-
-    const updated = [...list, newSubject];
-    setList(updated);
-    onSaveSubjects(updated);
-    setNewName('');
-    setNewCoeff('2');
+    void add();
   };
 
   const handleDelete = (id: string) => {
-    const updated = list.filter((s) => s.id !== id);
-    setList(updated);
-    onSaveSubjects(updated);
+    const remove = async () => {
+      setIsSaving(true);
+      setSaveError(null);
+      try {
+        await api.updateSubject(id, { statut: false });
+        const updated = list.filter((subject) => subject.id !== id);
+        setList(updated);
+        onSaveSubjects(updated);
+      } catch (error) {
+        setSaveError(error instanceof Error ? error.message : 'La suppression de matière a échoué.');
+      } finally {
+        setIsSaving(false);
+      }
+    };
+    void remove();
   };
 
-  const handleUpdateCoeff = (id: string, coeff: number) => {
-    const updated = list.map((s) => (s.id === id ? { ...s, coeff: Math.max(1, coeff) } : s));
-    setList(updated);
-    onSaveSubjects(updated);
+  const handleUpdateCoeff = (id: string) => {
+    const update = async () => {
+      const newValue = list.find((subject) => subject.id === id)?.coeff;
+      if (newValue === undefined) return;
+      setIsSaving(true);
+      setSaveError(null);
+      try {
+        await api.updateSubject(id, { coeff: newValue });
+        onSaveSubjects(list);
+      } catch (error) {
+        setSaveError(error instanceof Error ? error.message : 'La mise à jour du coefficient a échoué.');
+      } finally {
+        setIsSaving(false);
+      }
+    };
+    void update();
   };
 
   const handleUpdateSpecialty = (id: string, specialty: Specialty) => {
-    const updated = list.map((s) => (s.id === id ? { ...s, specialty } : s));
-    setList(updated);
-    onSaveSubjects(updated);
+    const update = async () => {
+      setIsSaving(true);
+      setSaveError(null);
+      try {
+        await api.updateSubject(id, { specialty });
+        const updated = list.map((subject) =>
+          subject.id === id ? { ...subject, specialty } : subject
+        );
+        setList(updated);
+        onSaveSubjects(updated);
+      } catch (error) {
+        setSaveError(error instanceof Error ? error.message : 'La mise à jour de la spécialité a échoué.');
+      } finally {
+        setIsSaving(false);
+      }
+    };
+    void update();
   };
 
   return (
@@ -73,6 +143,7 @@ export const SubjectsModal: React.FC<SubjectsModalProps> = ({
           </div>
           <button
             onClick={onClose}
+            disabled={isSaving}
             className="text-slate-300 hover:text-white p-1 rounded-md transition-colors"
           >
             <X className="w-5 h-5" />
@@ -81,6 +152,12 @@ export const SubjectsModal: React.FC<SubjectsModalProps> = ({
 
         <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
           {/* Add form */}
+          {saveError && (
+            <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+              {saveError}
+            </div>
+          )}
+
           <form
             onSubmit={handleAddSubject}
             className="bg-slate-50 border border-slate-200 rounded-lg p-3 grid grid-cols-1 md:grid-cols-4 gap-2.5 items-end"
@@ -93,6 +170,7 @@ export const SubjectsModal: React.FC<SubjectsModalProps> = ({
                 type="text"
                 placeholder="Ex: Informatique, Économie"
                 value={newName}
+                disabled={isSaving}
                 onChange={(e) => setNewName(e.target.value)}
                 className="w-full px-3 py-1.5 text-xs md:text-sm border border-slate-300 rounded-md outline-none focus:ring-2 focus:ring-[#1E3A5F]"
               />
@@ -106,6 +184,7 @@ export const SubjectsModal: React.FC<SubjectsModalProps> = ({
                 min="1"
                 max="10"
                 value={newCoeff}
+                disabled={isSaving}
                 onChange={(e) => setNewCoeff(e.target.value)}
                 className="w-full px-3 py-1.5 text-xs md:text-sm border border-slate-300 rounded-md outline-none focus:ring-2 focus:ring-[#1E3A5F]"
               />
@@ -116,6 +195,7 @@ export const SubjectsModal: React.FC<SubjectsModalProps> = ({
               </label>
               <select
                 value={newSpecialty}
+                disabled={isSaving}
                 onChange={(e) => setNewSpecialty(e.target.value as Specialty)}
                 className="w-full px-2.5 py-1.5 text-xs md:text-sm border border-slate-300 rounded-md outline-none focus:ring-2 focus:ring-[#1E3A5F] bg-white"
               >
@@ -125,7 +205,7 @@ export const SubjectsModal: React.FC<SubjectsModalProps> = ({
               </select>
             </div>
             <div className="md:col-span-4 flex justify-end">
-              <MidnightButton type="submit" size="sm" icon={<Plus className="w-4 h-4" />}>
+              <MidnightButton type="submit" size="sm" disabled={isSaving} icon={<Plus className="w-4 h-4" />}>
                 Ajouter la Matière
               </MidnightButton>
             </div>
@@ -152,13 +232,23 @@ export const SubjectsModal: React.FC<SubjectsModalProps> = ({
                         min="1"
                         max="10"
                         value={sub.coeff}
-                        onChange={(e) => handleUpdateCoeff(sub.id, parseInt(e.target.value, 10) || 1)}
+                        disabled={isSaving}
+                        onChange={(e) => {
+                          const coeff = Math.max(1, parseInt(e.target.value, 10) || 1);
+                          setList((current) =>
+                            current.map((subject) =>
+                              subject.id === sub.id ? { ...subject, coeff } : subject
+                            )
+                          );
+                        }}
+                        onBlur={() => handleUpdateCoeff(sub.id)}
                         className="w-14 text-center py-1 border border-slate-300 rounded focus:ring-1 focus:ring-[#1E3A5F] outline-none font-bold"
                       />
                     </td>
                     <td className="py-2 px-3">
                       <select
                         value={sub.specialty}
+                        disabled={isSaving}
                         onChange={(e) => handleUpdateSpecialty(sub.id, e.target.value as Specialty)}
                         className="w-full py-1 px-2 border border-slate-300 rounded bg-white outline-none focus:ring-1 focus:ring-[#1E3A5F]"
                       >
@@ -170,6 +260,7 @@ export const SubjectsModal: React.FC<SubjectsModalProps> = ({
                     <td className="py-2 px-3 text-right">
                       <button
                         onClick={() => handleDelete(sub.id)}
+                        disabled={isSaving}
                         className="text-rose-600 hover:text-rose-800 p-1 rounded hover:bg-rose-50 transition-colors"
                         title="Supprimer"
                       >
@@ -184,7 +275,7 @@ export const SubjectsModal: React.FC<SubjectsModalProps> = ({
         </div>
 
         <div className="bg-slate-50 px-5 py-3 border-t border-slate-200 flex justify-end">
-          <MidnightButton onClick={onClose} size="sm">
+          <MidnightButton onClick={onClose} size="sm" disabled={isSaving}>
             Fermer et Appliquer
           </MidnightButton>
         </div>

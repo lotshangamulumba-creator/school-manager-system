@@ -60,3 +60,49 @@ test('new DATABASE_FILE installations receive independent, non-demo school data'
   assert.equal(schoolA.users, 1);
   assert.equal(schoolB.students, 0);
 });
+
+test('legacy databases receive server-backed subjects for levels missing them', (context) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'monpilot-subject-migration-'));
+  context.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const databasePath = path.join(directory, 'school.json');
+  initializeSchoolDatabase(databasePath);
+
+  const legacyData = JSON.parse(fs.readFileSync(databasePath, 'utf8'));
+  legacyData.version = 1;
+  legacyData.subjects = legacyData.subjects.filter((subject: { niveau: string }) => subject.niveau === 'Collège');
+  fs.writeFileSync(databasePath, JSON.stringify(legacyData), 'utf8');
+
+  const source = `
+    const { db } = await import('./src/server/db.ts');
+    const data = db.getData();
+    console.log(JSON.stringify({
+      version: data.version,
+      lycee: data.subjects.filter(subject => subject.niveau === 'Lycée' && subject.statut),
+      primaire: data.subjects.filter(subject => subject.niveau === 'Primaire' && subject.statut)
+    }));
+  `;
+  const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', source], {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      DATABASE_FILE: databasePath,
+      JWT_SECRET: 'subject-migration-test-secret',
+      NODE_ENV: 'test',
+      SEED_ADMIN_EMAIL: 'admin@school.test',
+      SEED_ADMIN_PASSWORD: 'SchoolAdminTest-2026!',
+      SEED_DEMO_DATA: 'false',
+    },
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const migrated = JSON.parse(result.stdout.trim()) as {
+    version: number;
+    lycee: Array<{ id: string }>;
+    primaire: Array<{ id: string }>;
+  };
+  assert.equal(migrated.version, 2);
+  assert.ok(migrated.lycee.length > 0);
+  assert.ok(migrated.primaire.length > 0);
+  assert.ok(migrated.lycee.every((subject) => subject.id !== 'l1'));
+});
