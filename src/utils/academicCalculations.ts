@@ -11,6 +11,21 @@ import {
 } from '../types';
 import { getCeminaceMention, CEMINACE_LEVELS } from '../data/ceminaceDefaults';
 
+export function isValidStudentGrade(grades: Partial<StudentGrades> | undefined): boolean {
+  if (!grades) return false;
+
+  const evaluations =
+    grades.evaluations ??
+    (grades.eval1 !== undefined || grades.eval2 !== undefined
+      ? ((grades.eval1 ?? 0) + (grades.eval2 ?? grades.eval1 ?? 0)) / 2
+      : undefined);
+  const values = [evaluations, grades.dev1, grades.dev2, grades.composition ?? grades.dev3];
+
+  return values.every(
+    (value) => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 20
+  );
+}
+
 export function calculateClassAverages(
   students: Student[],
   subjects: Subject[],
@@ -21,35 +36,24 @@ export function calculateClassAverages(
   const classStudents = students.filter((s) => s.className === currentClass);
   if (classStudents.length === 0 || subjects.length === 0) return [];
 
-  // 1. Calculate raw subject averages for each student
-  const studentSubjectMap: Record<
-    string,
-    Record<
-      string,
-      {
-        evalAvg: number;
-        dev1: number;
-        dev2: number;
-        devAvg: number;
-        composition: number;
-        subjectAvg: number;
-        points: number;
-      }
-    >
-  > = {};
+  type SubjectCalculation = {
+    evalAvg: number;
+    dev1: number;
+    dev2: number;
+    devAvg: number;
+    composition: number;
+    subjectAvg: number;
+    points: number;
+  };
+  const studentSubjectMap: Record<string, Record<string, SubjectCalculation>> = {};
 
   classStudents.forEach((student) => {
     studentSubjectMap[student.id] = {};
     subjects.forEach((sub) => {
-      // Clé par trimestre prioritaire, sinon clé générale
       const g =
         gradesMap[`${student.id}_${sub.name}_${trimester}`] ||
-        gradesMap[`${student.id}_${sub.name}`] || {
-          evaluations: 0,
-          dev1: 0,
-          dev2: 0,
-          composition: 0,
-        };
+        (trimester === '1er Trimestre' ? gradesMap[`${student.id}_${sub.name}`] : undefined);
+      if (!g || !isValidStudentGrade(g)) return;
 
       const evalAvg =
         g.evaluations !== undefined
@@ -82,32 +86,33 @@ export function calculateClassAverages(
     });
   });
 
-  // 2. Rank students in each subject
   const subjectRanks: Record<string, Record<string, number>> = {};
+  const subjectCohorts: Record<string, number> = {};
   subjects.forEach((sub) => {
-    const sorted = [...classStudents].sort((a, b) => {
-      const avgA = studentSubjectMap[a.id]?.[sub.name]?.subjectAvg ?? 0;
-      const avgB = studentSubjectMap[b.id]?.[sub.name]?.subjectAvg ?? 0;
+    const gradedStudents = classStudents.filter((student) => studentSubjectMap[student.id]?.[sub.name]);
+    const sorted = gradedStudents.sort((a, b) => {
+      const avgA = studentSubjectMap[a.id][sub.name].subjectAvg;
+      const avgB = studentSubjectMap[b.id][sub.name].subjectAvg;
       return avgB - avgA;
     });
 
     subjectRanks[sub.name] = {};
+    subjectCohorts[sub.name] = sorted.length;
     sorted.forEach((student, index) => {
       subjectRanks[sub.name][student.id] = index + 1;
     });
   });
 
-  // 3. Compute student totals and specialty averages
   const interimResults: Array<{
     student: Student;
     subjectResults: SubjectResult[];
     totalPoints: number;
     totalCoeff: number;
     generalAvg: number;
-    sciencesAvg: number;
-    literatureAvg: number;
-    epsAvg: number;
-  }> = classStudents.map((student) => {
+    sciencesAvg: number | null;
+    literatureAvg: number | null;
+    epsAvg: number | null;
+  }> = classStudents.flatMap((student) => {
     let totalPoints = 0;
     let totalCoeff = 0;
 
@@ -120,9 +125,9 @@ export function calculateClassAverages(
     let epsPoints = 0;
     let epsCoeff = 0;
 
-    const subjectResults: SubjectResult[] = subjects.map((sub) => {
+    const subjectResults: SubjectResult[] = subjects.flatMap((sub) => {
       const calc = studentSubjectMap[student.id][sub.name];
-      const rank = subjectRanks[sub.name]?.[student.id] || 1;
+      if (!calc) return [];
 
       totalPoints += calc.points;
       totalCoeff += sub.coeff;
@@ -157,15 +162,18 @@ export function calculateClassAverages(
         composition: calc.composition,
         subjectAvg: calc.subjectAvg,
         points: calc.points,
-        rank,
+        rank: subjectRanks[sub.name][student.id],
+        rankedStudentCount: subjectCohorts[sub.name],
         appreciation,
       };
     });
 
+    if (subjectResults.length === 0) return [];
+
     const generalAvg = totalCoeff > 0 ? Number((totalPoints / totalCoeff).toFixed(2)) : 0;
-    const sciencesAvg = sciCoeff > 0 ? Number((sciPoints / sciCoeff).toFixed(2)) : 0;
-    const literatureAvg = litCoeff > 0 ? Number((litPoints / litCoeff).toFixed(2)) : 0;
-    const epsAvg = epsCoeff > 0 ? Number((epsPoints / epsCoeff).toFixed(2)) : 0;
+    const sciencesAvg = sciCoeff > 0 ? Number((sciPoints / sciCoeff).toFixed(2)) : null;
+    const literatureAvg = litCoeff > 0 ? Number((litPoints / litCoeff).toFixed(2)) : null;
+    const epsAvg = epsCoeff > 0 ? Number((epsPoints / epsCoeff).toFixed(2)) : null;
 
     return {
       student,
@@ -179,26 +187,20 @@ export function calculateClassAverages(
     };
   });
 
-  // 4. Calculate specialty ranks
-  const sortedSci = [...interimResults].sort((a, b) => b.sciencesAvg - a.sciencesAvg);
-  const sciRanks: Record<string, number> = {};
-  sortedSci.forEach((item, idx) => {
-    sciRanks[item.student.id] = idx + 1;
-  });
+  const specialtyRanks = (getAverage: (item: (typeof interimResults)[number]) => number | null) => {
+    const ranks: Record<string, number> = {};
+    interimResults
+      .filter((item) => getAverage(item) !== null)
+      .sort((a, b) => (getAverage(b) ?? 0) - (getAverage(a) ?? 0))
+      .forEach((item, index) => {
+        ranks[item.student.id] = index + 1;
+      });
+    return ranks;
+  };
+  const sciRanks = specialtyRanks((item) => item.sciencesAvg);
+  const litRanks = specialtyRanks((item) => item.literatureAvg);
+  const epsRanks = specialtyRanks((item) => item.epsAvg);
 
-  const sortedLit = [...interimResults].sort((a, b) => b.literatureAvg - a.literatureAvg);
-  const litRanks: Record<string, number> = {};
-  sortedLit.forEach((item, idx) => {
-    litRanks[item.student.id] = idx + 1;
-  });
-
-  const sortedEps = [...interimResults].sort((a, b) => b.epsAvg - a.epsAvg);
-  const epsRanks: Record<string, number> = {};
-  sortedEps.forEach((item, idx) => {
-    epsRanks[item.student.id] = idx + 1;
-  });
-
-  // 5. Calculate general rank
   const sortedGeneral = [...interimResults].sort((a, b) => b.generalAvg - a.generalAvg);
   const genRanks: Record<string, number> = {};
   sortedGeneral.forEach((item, idx) => {
@@ -214,13 +216,16 @@ export function calculateClassAverages(
       totalPoints: item.totalPoints,
       totalCoeff: item.totalCoeff,
       generalAvg: item.generalAvg,
-      generalRank: genRanks[sId] || 1,
+      generalRank: genRanks[sId],
       sciencesAvg: item.sciencesAvg,
-      sciencesRank: sciRanks[sId] || 1,
+      sciencesRank: sciRanks[sId] ?? null,
+      sciencesStudentCount: Object.keys(sciRanks).length,
       literatureAvg: item.literatureAvg,
-      literatureRank: litRanks[sId] || 1,
+      literatureRank: litRanks[sId] ?? null,
+      literatureStudentCount: Object.keys(litRanks).length,
       epsAvg: item.epsAvg,
-      epsRank: epsRanks[sId] || 1,
+      epsRank: epsRanks[sId] ?? null,
+      epsStudentCount: Object.keys(epsRanks).length,
       mention: getCeminaceMention(item.generalAvg),
     };
   });
@@ -239,73 +244,74 @@ export function calculateEstablishmentSpecialtySummary(
 ): EstablishmentSpecialtyStat {
   const levelsOrder: SchoolLevel[] = ['Primaire', 'Collège', 'Lycée'];
 
-  // Offset selon le trimestre pour refléter des statistiques cohérentes
-  const trimOffset = trimester === '2ème Trimestre' ? 0.35 : trimester === '3ème Trimestre' ? 0.65 : 0.0;
-
   const levelStats: LevelSpecialtyStat[] = levelsOrder.map((lvl) => {
     const levelConf = CEMINACE_LEVELS[lvl];
     const lvlSubjects = lvl === currentLevel ? currentSubjects : levelConf.defaultSubjects;
 
-    const classStats: ClassSpecialtyStat[] = levelConf.classes.map((cls, cIdx) => {
-      const clsStudents = allStudents.filter((s) => s.className === cls);
-
-      if (clsStudents.length > 0) {
-        const results = calculateClassAverages(allStudents, lvlSubjects, gradesMap, cls, trimester);
-        const count = results.length;
-        const sumSci = results.reduce((acc, r) => acc + r.sciencesAvg, 0);
-        const sumLit = results.reduce((acc, r) => acc + r.literatureAvg, 0);
-        const sumEps = results.reduce((acc, r) => acc + r.epsAvg, 0);
-        const sumGen = results.reduce((acc, r) => acc + r.generalAvg, 0);
-
-        const best = results[0] || null;
-
+    const classStats: ClassSpecialtyStat[] = levelConf.classes.map((cls) => {
+      const results = calculateClassAverages(allStudents, lvlSubjects, gradesMap, cls, trimester);
+      const count = results.length;
+      const average = (select: (result: StudentTrimesterResult) => number | null) => {
+        const values = results.map(select).filter((value): value is number => value !== null);
         return {
-          level: lvl,
-          className: cls,
-          studentCount: count,
-          sciencesAvg: count > 0 ? Number((sumSci / count).toFixed(2)) : 0,
-          literatureAvg: count > 0 ? Number((sumLit / count).toFixed(2)) : 0,
-          epsAvg: count > 0 ? Number((sumEps / count).toFixed(2)) : 0,
-          generalAvg: count > 0 ? Number((sumGen / count).toFixed(2)) : 0,
-          bestStudentName: best ? `${best.student.lastName.toUpperCase()} ${best.student.firstName}` : '-',
-          bestStudentAvg: best ? best.generalAvg : 0,
+          average:
+            values.length > 0
+              ? Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(2))
+              : null,
+          studentCount: values.length,
         };
-      } else {
-        // Benchmarks académiques réalistes CEMINACE pour les classes sans élèves directement saisis
-        const pseudoSeed = (cIdx * 1.37 + lvl.length * 0.82) % 4.2;
-        const sci = Number(Math.min(18.5, Math.max(9.5, 11.8 + pseudoSeed * 0.9 + trimOffset)).toFixed(2));
-        const lit = Number(Math.min(18.5, Math.max(9.5, 12.2 + (pseudoSeed % 2.5) * 0.8 + trimOffset)).toFixed(2));
-        const eps = Number(Math.min(19.0, Math.max(11.0, 13.5 + (pseudoSeed % 1.9) * 0.7 + trimOffset * 0.5)).toFixed(2));
-        const gen = Number(((sci * 4 + lit * 4 + eps * 2) / 10).toFixed(2));
-        const simulatedCount = 28 + (cIdx % 7);
+      };
+      const sciences = average((result) => result.sciencesAvg);
+      const literature = average((result) => result.literatureAvg);
+      const eps = average((result) => result.epsAvg);
+      const best = results[0];
 
-        return {
-          level: lvl,
-          className: cls,
-          studentCount: simulatedCount,
-          sciencesAvg: sci,
-          literatureAvg: lit,
-          epsAvg: eps,
-          generalAvg: gen,
-          bestStudentName: `Élève Major (${cls})`,
-          bestStudentAvg: Number(Math.min(19.5, gen + 3.4).toFixed(2)),
-        };
-      }
+      return {
+        level: lvl,
+        className: cls,
+        studentCount: count,
+        sciencesAvg: sciences.average,
+        sciencesStudentCount: sciences.studentCount,
+        literatureAvg: literature.average,
+        literatureStudentCount: literature.studentCount,
+        epsAvg: eps.average,
+        epsStudentCount: eps.studentCount,
+        generalAvg: average((result) => result.generalAvg).average ?? 0,
+        bestStudentName: best ? `${best.student.lastName.toUpperCase()} ${best.student.firstName}` : '-',
+        bestStudentAvg: best ? best.generalAvg : 0,
+      };
     });
 
     const totalStudents = classStats.reduce((acc, c) => acc + c.studentCount, 0);
-    const weightedSci = classStats.reduce((acc, c) => acc + c.sciencesAvg * c.studentCount, 0);
-    const weightedLit = classStats.reduce((acc, c) => acc + c.literatureAvg * c.studentCount, 0);
-    const weightedEps = classStats.reduce((acc, c) => acc + c.epsAvg * c.studentCount, 0);
+    const weightedSpecialty = (
+      averageKey: 'sciencesAvg' | 'literatureAvg' | 'epsAvg',
+      countKey: 'sciencesStudentCount' | 'literatureStudentCount' | 'epsStudentCount'
+    ) => {
+      const studentCount = classStats.reduce((sum, cls) => sum + cls[countKey], 0);
+      const points = classStats.reduce(
+        (sum, cls) => sum + (cls[averageKey] ?? 0) * cls[countKey],
+        0
+      );
+      return {
+        average: studentCount > 0 ? Number((points / studentCount).toFixed(2)) : null,
+        studentCount,
+      };
+    };
+    const sciences = weightedSpecialty('sciencesAvg', 'sciencesStudentCount');
+    const literature = weightedSpecialty('literatureAvg', 'literatureStudentCount');
+    const eps = weightedSpecialty('epsAvg', 'epsStudentCount');
     const weightedGen = classStats.reduce((acc, c) => acc + c.generalAvg * c.studentCount, 0);
 
     return {
       level: lvl,
       totalStudents,
       classesCount: classStats.length,
-      sciencesAvg: totalStudents > 0 ? Number((weightedSci / totalStudents).toFixed(2)) : 0,
-      literatureAvg: totalStudents > 0 ? Number((weightedLit / totalStudents).toFixed(2)) : 0,
-      epsAvg: totalStudents > 0 ? Number((weightedEps / totalStudents).toFixed(2)) : 0,
+      sciencesAvg: sciences.average,
+      sciencesStudentCount: sciences.studentCount,
+      literatureAvg: literature.average,
+      literatureStudentCount: literature.studentCount,
+      epsAvg: eps.average,
+      epsStudentCount: eps.studentCount,
       generalAvg: totalStudents > 0 ? Number((weightedGen / totalStudents).toFixed(2)) : 0,
       classes: classStats,
     };
@@ -313,18 +319,35 @@ export function calculateEstablishmentSpecialtySummary(
 
   const grandTotalStudents = levelStats.reduce((acc, l) => acc + l.totalStudents, 0);
   const grandTotalClasses = levelStats.reduce((acc, l) => acc + l.classesCount, 0);
-  const grandWeightedSci = levelStats.reduce((acc, l) => acc + l.sciencesAvg * l.totalStudents, 0);
-  const grandWeightedLit = levelStats.reduce((acc, l) => acc + l.literatureAvg * l.totalStudents, 0);
-  const grandWeightedEps = levelStats.reduce((acc, l) => acc + l.epsAvg * l.totalStudents, 0);
+  const grandWeightedSpecialty = (
+    averageKey: 'sciencesAvg' | 'literatureAvg' | 'epsAvg',
+    countKey: 'sciencesStudentCount' | 'literatureStudentCount' | 'epsStudentCount'
+  ) => {
+    const studentCount = levelStats.reduce((sum, level) => sum + level[countKey], 0);
+    const points = levelStats.reduce(
+      (sum, level) => sum + (level[averageKey] ?? 0) * level[countKey],
+      0
+    );
+    return {
+      average: studentCount > 0 ? Number((points / studentCount).toFixed(2)) : null,
+      studentCount,
+    };
+  };
+  const sciences = grandWeightedSpecialty('sciencesAvg', 'sciencesStudentCount');
+  const literature = grandWeightedSpecialty('literatureAvg', 'literatureStudentCount');
+  const eps = grandWeightedSpecialty('epsAvg', 'epsStudentCount');
   const grandWeightedGen = levelStats.reduce((acc, l) => acc + l.generalAvg * l.totalStudents, 0);
 
   return {
     trimester,
     totalStudents: grandTotalStudents,
     totalClasses: grandTotalClasses,
-    sciencesAvg: grandTotalStudents > 0 ? Number((grandWeightedSci / grandTotalStudents).toFixed(2)) : 0,
-    literatureAvg: grandTotalStudents > 0 ? Number((grandWeightedLit / grandTotalStudents).toFixed(2)) : 0,
-    epsAvg: grandTotalStudents > 0 ? Number((grandWeightedEps / grandTotalStudents).toFixed(2)) : 0,
+    sciencesAvg: sciences.average,
+    sciencesStudentCount: sciences.studentCount,
+    literatureAvg: literature.average,
+    literatureStudentCount: literature.studentCount,
+    epsAvg: eps.average,
+    epsStudentCount: eps.studentCount,
     generalAvg: grandTotalStudents > 0 ? Number((grandWeightedGen / grandTotalStudents).toFixed(2)) : 0,
     levels: levelStats,
   };

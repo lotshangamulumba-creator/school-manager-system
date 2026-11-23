@@ -128,7 +128,10 @@ export const AdminDashboardView: React.FC<AdminDashboardProps> = ({ selectedTerm
             </div>
           </div>
           <div className="mt-2">
-            <div className="text-2xl font-black text-white">{stats.globalAvg.toFixed(2)}<span className="text-sm font-normal text-emerald-200">/20</span></div>
+            <div className="text-2xl font-black text-white">
+              {stats.totalStudents > 0 ? stats.globalAvg.toFixed(2) : '—'}
+              {stats.totalStudents > 0 && <span className="text-sm font-normal text-emerald-200">/20</span>}
+            </div>
             <p className="text-[10px] text-emerald-100 font-bold mt-0.5">Établissement</p>
           </div>
         </div>
@@ -158,7 +161,8 @@ export const AdminDashboardView: React.FC<AdminDashboardProps> = ({ selectedTerm
             </thead>
             <tbody className="divide-y divide-slate-100">
               {stats.classes?.map((c: any) => {
-                const isPassing = c.classAvg >= 10;
+                const hasGrades = c.studentCount > 0;
+                const isPassing = hasGrades && c.classAvg >= 10;
                 return (
                   <tr key={c.classId} className="hover:bg-slate-50/80 transition-colors">
                     <td className="py-3 px-4 font-bold text-slate-900">{c.className}</td>
@@ -171,10 +175,14 @@ export const AdminDashboardView: React.FC<AdminDashboardProps> = ({ selectedTerm
                     <td className="py-3 px-3 text-center">
                       <span
                         className={`inline-block px-2.5 py-1 rounded-md font-black text-xs ${
-                          isPassing ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
+                          !hasGrades
+                            ? 'bg-slate-50 text-slate-500 border border-slate-200'
+                            : isPassing
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-rose-50 text-rose-700 border border-rose-200'
                         }`}
                       >
-                        {c.classAvg.toFixed(2)}/20
+                        {hasGrades ? `${c.classAvg.toFixed(2)}/20` : '—'}
                       </span>
                     </td>
                     <td className="py-3 px-3 text-slate-700 font-medium">

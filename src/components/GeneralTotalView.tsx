@@ -20,7 +20,6 @@ import { contrastingTextColor, hexToRgb } from '../utils/colors';
 interface GeneralTotalViewProps {
   stats: EstablishmentSpecialtyStat;
   trimester: string;
-  onCycleTrimester: () => void;
   isFrench: boolean;
   schoolProfile?: SchoolProfile;
 }
@@ -28,7 +27,6 @@ interface GeneralTotalViewProps {
 export const GeneralTotalView: React.FC<GeneralTotalViewProps> = ({
   stats,
   trimester,
-  onCycleTrimester,
   isFrench,
   schoolProfile = DEFAULT_SCHOOL_PROFILE,
 }) => {
@@ -41,10 +39,17 @@ export const GeneralTotalView: React.FC<GeneralTotalViewProps> = ({
 
   // Identify top classes per specialty across the whole school
   const allClasses = stats.levels.flatMap((l) => l.classes);
-  const bestSciClass = [...allClasses].sort((a, b) => b.sciencesAvg - a.sciencesAvg)[0];
-  const bestLitClass = [...allClasses].sort((a, b) => b.literatureAvg - a.literatureAvg)[0];
-  const bestEpsClass = [...allClasses].sort((a, b) => b.epsAvg - a.epsAvg)[0];
-  const bestOverallClass = [...allClasses].sort((a, b) => b.generalAvg - a.generalAvg)[0];
+  const bestSciClass = [...allClasses]
+    .filter((cls) => cls.sciencesAvg !== null)
+    .sort((a, b) => (b.sciencesAvg ?? 0) - (a.sciencesAvg ?? 0))[0];
+  const bestLitClass = [...allClasses]
+    .filter((cls) => cls.literatureAvg !== null)
+    .sort((a, b) => (b.literatureAvg ?? 0) - (a.literatureAvg ?? 0))[0];
+  const bestEpsClass = [...allClasses]
+    .filter((cls) => cls.epsAvg !== null)
+    .sort((a, b) => (b.epsAvg ?? 0) - (a.epsAvg ?? 0))[0];
+  const formatAverage = (count: number, average: number | null) =>
+    count > 0 && average !== null ? average.toFixed(2) : '-';
 
   const handleExportPdf = () => {
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
@@ -94,11 +99,11 @@ export const GeneralTotalView: React.FC<GeneralTotalViewProps> = ({
           cls.level,
           cls.className,
           cls.studentCount,
-          cls.sciencesAvg.toFixed(2),
-          cls.literatureAvg.toFixed(2),
-          cls.epsAvg.toFixed(2),
-          cls.generalAvg.toFixed(2),
-          `${cls.bestStudentName} (${cls.bestStudentAvg.toFixed(2)})`,
+          formatAverage(cls.sciencesStudentCount, cls.sciencesAvg),
+          formatAverage(cls.literatureStudentCount, cls.literatureAvg),
+          formatAverage(cls.epsStudentCount, cls.epsAvg),
+          formatAverage(cls.studentCount, cls.generalAvg),
+          cls.studentCount > 0 ? `${cls.bestStudentName} (${cls.bestStudentAvg.toFixed(2)})` : '-',
         ]);
       });
 
@@ -107,10 +112,10 @@ export const GeneralTotalView: React.FC<GeneralTotalViewProps> = ({
         `TOTAL / MOYENNE ${lvl.level.toUpperCase()}`,
         `${lvl.classesCount} Classes`,
         lvl.totalStudents,
-        lvl.sciencesAvg.toFixed(2),
-        lvl.literatureAvg.toFixed(2),
-        lvl.epsAvg.toFixed(2),
-        lvl.generalAvg.toFixed(2),
+        formatAverage(lvl.sciencesStudentCount, lvl.sciencesAvg),
+        formatAverage(lvl.literatureStudentCount, lvl.literatureAvg),
+        formatAverage(lvl.epsStudentCount, lvl.epsAvg),
+        formatAverage(lvl.totalStudents, lvl.generalAvg),
         `Bilan ${lvl.level}`,
       ]);
     });
@@ -120,10 +125,10 @@ export const GeneralTotalView: React.FC<GeneralTotalViewProps> = ({
       'GRAND TOTAL GÉNÉRAL ÉTABLISSEMENT',
       `${stats.totalClasses} Classes`,
       stats.totalStudents,
-      stats.sciencesAvg.toFixed(2),
-      stats.literatureAvg.toFixed(2),
-      stats.epsAvg.toFixed(2),
-      stats.generalAvg.toFixed(2),
+      formatAverage(stats.sciencesStudentCount, stats.sciencesAvg),
+      formatAverage(stats.literatureStudentCount, stats.literatureAvg),
+      formatAverage(stats.epsStudentCount, stats.epsAvg),
+      formatAverage(stats.totalStudents, stats.generalAvg),
       'Moyenne Établissement',
     ]);
 
@@ -133,7 +138,7 @@ export const GeneralTotalView: React.FC<GeneralTotalViewProps> = ({
         [
           'Cycle / Niveau',
           'Classe',
-          'Effectif',
+          'Élèves évalués',
           'Moy. Sciences /20',
           'Moy. Littérature /20',
           'Moy. EPS /20',
@@ -206,16 +211,6 @@ export const GeneralTotalView: React.FC<GeneralTotalViewProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Trimester switch action button */}
-          <button
-            onClick={onCycleTrimester}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-bold text-xs rounded-lg shadow-xs transition-all cursor-pointer"
-            title="Basculer vers le trimestre suivant"
-          >
-            <span>🔄</span>
-            <span>{isFrench ? 'Basculer Trimestre' : 'Switch Trimester'}</span>
-          </button>
-
           {/* Export PDF Button */}
           <MidnightButton onClick={handleExportPdf} size="sm">
             <Download className="w-4 h-4 mr-1.5 inline" />
@@ -234,10 +229,10 @@ export const GeneralTotalView: React.FC<GeneralTotalViewProps> = ({
               {schoolProfile.schoolName}
             </span>
             <span className="text-[11px] bg-sky-900/80 px-2 py-0.5 rounded">
-              {stats.totalStudents} élèves
+              {stats.totalStudents} élèves évalués
             </span>
           </div>
-          <div className="text-2xl font-black">{stats.generalAvg.toFixed(2)} / 20</div>
+          <div className="text-2xl font-black">{formatAverage(stats.totalStudents, stats.generalAvg)}{stats.totalStudents > 0 ? ' / 20' : ''}</div>
           <div className="text-[11px] text-sky-200 mt-1 flex justify-between">
             <span>{stats.totalClasses} classes actives</span>
             <span>Moyenne Générale</span>
@@ -256,11 +251,11 @@ export const GeneralTotalView: React.FC<GeneralTotalViewProps> = ({
             </span>
           </div>
           <div className="text-xl font-extrabold text-slate-800">
-            {bestSciClass ? `${bestSciClass.sciencesAvg.toFixed(2)} / 20` : '-'}
+            {bestSciClass ? `${formatAverage(bestSciClass.sciencesStudentCount, bestSciClass.sciencesAvg)} / 20` : '-'}
           </div>
           <div className="text-[11px] text-slate-500 mt-1 flex justify-between">
             <span>Niveau {bestSciClass?.level}</span>
-            <span className="text-indigo-600 font-semibold">Moy. Établ. : {stats.sciencesAvg.toFixed(2)}</span>
+            <span className="text-indigo-600 font-semibold">Moy. Établ. : {formatAverage(stats.sciencesStudentCount, stats.sciencesAvg)}</span>
           </div>
         </div>
 
@@ -276,11 +271,11 @@ export const GeneralTotalView: React.FC<GeneralTotalViewProps> = ({
             </span>
           </div>
           <div className="text-xl font-extrabold text-slate-800">
-            {bestLitClass ? `${bestLitClass.literatureAvg.toFixed(2)} / 20` : '-'}
+            {bestLitClass ? `${formatAverage(bestLitClass.literatureStudentCount, bestLitClass.literatureAvg)} / 20` : '-'}
           </div>
           <div className="text-[11px] text-slate-500 mt-1 flex justify-between">
             <span>Niveau {bestLitClass?.level}</span>
-            <span className="text-amber-600 font-semibold">Moy. Établ. : {stats.literatureAvg.toFixed(2)}</span>
+            <span className="text-amber-600 font-semibold">Moy. Établ. : {formatAverage(stats.literatureStudentCount, stats.literatureAvg)}</span>
           </div>
         </div>
 
@@ -296,11 +291,11 @@ export const GeneralTotalView: React.FC<GeneralTotalViewProps> = ({
             </span>
           </div>
           <div className="text-xl font-extrabold text-slate-800">
-            {bestEpsClass ? `${bestEpsClass.epsAvg.toFixed(2)} / 20` : '-'}
+            {bestEpsClass ? `${formatAverage(bestEpsClass.epsStudentCount, bestEpsClass.epsAvg)} / 20` : '-'}
           </div>
           <div className="text-[11px] text-slate-500 mt-1 flex justify-between">
             <span>Niveau {bestEpsClass?.level}</span>
-            <span className="text-emerald-600 font-semibold">Moy. Établ. : {stats.epsAvg.toFixed(2)}</span>
+            <span className="text-emerald-600 font-semibold">Moy. Établ. : {formatAverage(stats.epsStudentCount, stats.epsAvg)}</span>
           </div>
         </div>
       </div>
@@ -339,22 +334,22 @@ export const GeneralTotalView: React.FC<GeneralTotalViewProps> = ({
                   {isFrench ? `Cycle : ${lvlStat.level}` : `Level: ${lvlStat.level}`}
                 </h3>
                 <span className="text-xs text-slate-500">
-                  ({lvlStat.classesCount} classes • {lvlStat.totalStudents} élèves inscrits)
+                  ({lvlStat.classesCount} classes • {lvlStat.totalStudents} élèves évalués)
                 </span>
               </div>
 
               <div className="flex items-center gap-3 text-xs">
                 <span className="text-indigo-700 font-medium">
-                  Sciences : <b>{lvlStat.sciencesAvg.toFixed(2)}</b>
+                  Sciences : <b>{formatAverage(lvlStat.sciencesStudentCount, lvlStat.sciencesAvg)}</b>
                 </span>
                 <span className="text-amber-700 font-medium">
-                  Littérature : <b>{lvlStat.literatureAvg.toFixed(2)}</b>
+                  Littérature : <b>{formatAverage(lvlStat.literatureStudentCount, lvlStat.literatureAvg)}</b>
                 </span>
                 <span className="text-emerald-700 font-medium">
-                  EPS : <b>{lvlStat.epsAvg.toFixed(2)}</b>
+                  EPS : <b>{formatAverage(lvlStat.epsStudentCount, lvlStat.epsAvg)}</b>
                 </span>
                 <span className="bg-[#1E3A5F] text-white px-2 py-0.5 rounded font-bold">
-                  Moy. Cycle : {lvlStat.generalAvg.toFixed(2)}
+                  Moy. Cycle : {formatAverage(lvlStat.totalStudents, lvlStat.generalAvg)}
                 </span>
               </div>
             </div>
@@ -365,7 +360,7 @@ export const GeneralTotalView: React.FC<GeneralTotalViewProps> = ({
                 <thead className="bg-slate-50 text-slate-600 font-semibold uppercase text-[10px] tracking-wider border-b border-slate-200">
                   <tr>
                     <th className="py-2.5 px-4">Classe</th>
-                    <th className="py-2.5 px-3 text-center">Effectif</th>
+                    <th className="py-2.5 px-3 text-center">Évalués</th>
                     <th className="py-2.5 px-3 text-center text-indigo-700">Moy. Sciences /20</th>
                     <th className="py-2.5 px-3 text-center text-amber-700">Moy. Littérature /20</th>
                     <th className="py-2.5 px-3 text-center text-emerald-700">Moy. EPS /20</th>
@@ -381,31 +376,33 @@ export const GeneralTotalView: React.FC<GeneralTotalViewProps> = ({
                       <td className="py-2.5 px-4 font-bold text-[#1E3A5F]">{cls.className}</td>
                       <td className="py-2.5 px-3 text-center text-slate-600">{cls.studentCount}</td>
                       <td className="py-2.5 px-3 text-center font-semibold text-indigo-900 bg-indigo-50/20">
-                        {cls.sciencesAvg.toFixed(2)}
+                        {formatAverage(cls.sciencesStudentCount, cls.sciencesAvg)}
                       </td>
                       <td className="py-2.5 px-3 text-center font-semibold text-amber-900 bg-amber-50/20">
-                        {cls.literatureAvg.toFixed(2)}
+                        {formatAverage(cls.literatureStudentCount, cls.literatureAvg)}
                       </td>
                       <td className="py-2.5 px-3 text-center font-semibold text-emerald-900 bg-emerald-50/20">
-                        {cls.epsAvg.toFixed(2)}
+                        {formatAverage(cls.epsStudentCount, cls.epsAvg)}
                       </td>
                       <td className="py-2.5 px-3 text-center font-bold">
                         <span
                           className={`inline-block px-2.5 py-0.5 rounded ${
-                            cls.generalAvg >= 14
+                            cls.studentCount === 0
+                              ? 'bg-slate-100 text-slate-500'
+                              : cls.generalAvg >= 14
                               ? 'bg-emerald-100 text-emerald-800'
                               : cls.generalAvg >= 10
                               ? 'bg-sky-100 text-sky-900'
                               : 'bg-rose-100 text-rose-800'
                           }`}
                         >
-                          {cls.generalAvg.toFixed(2)}
+                          {formatAverage(cls.studentCount, cls.generalAvg)}
                         </span>
                       </td>
                       <td className="py-2.5 px-4 text-slate-700">
                         <div className="font-semibold text-slate-900">{cls.bestStudentName}</div>
                         <div className="text-[10px] text-amber-600 font-bold">
-                          Moy. : {cls.bestStudentAvg.toFixed(2)} / 20
+                          {cls.studentCount > 0 ? `Moy. : ${cls.bestStudentAvg.toFixed(2)} / 20` : ''}
                         </div>
                       </td>
                     </tr>
@@ -418,16 +415,16 @@ export const GeneralTotalView: React.FC<GeneralTotalViewProps> = ({
                     </td>
                     <td className="py-3 px-3 text-center text-slate-800">{lvlStat.totalStudents}</td>
                     <td className="py-3 px-3 text-center text-indigo-950">
-                      {lvlStat.sciencesAvg.toFixed(2)}
+                      {formatAverage(lvlStat.sciencesStudentCount, lvlStat.sciencesAvg)}
                     </td>
                     <td className="py-3 px-3 text-center text-amber-950">
-                      {lvlStat.literatureAvg.toFixed(2)}
+                      {formatAverage(lvlStat.literatureStudentCount, lvlStat.literatureAvg)}
                     </td>
                     <td className="py-3 px-3 text-center text-emerald-950">
-                      {lvlStat.epsAvg.toFixed(2)}
+                      {formatAverage(lvlStat.epsStudentCount, lvlStat.epsAvg)}
                     </td>
                     <td className="py-3 px-3 text-center text-[#1E3A5F] text-sm">
-                      {lvlStat.generalAvg.toFixed(2)} / 20
+                      {formatAverage(lvlStat.totalStudents, lvlStat.generalAvg)}{lvlStat.totalStudents > 0 ? ' / 20' : ''}
                     </td>
                     <td className="py-3 px-4 text-slate-500 text-[11px]">
                       Moyenne générale pondérée du cycle
@@ -454,9 +451,9 @@ export const GeneralTotalView: React.FC<GeneralTotalViewProps> = ({
               </p>
             </div>
             <div className="text-right">
-              <div className="text-xs text-sky-300">Effectif Global Établissement</div>
+              <div className="text-xs text-sky-300">Élèves évalués • Classes</div>
               <div className="text-xl font-black">
-                {stats.totalStudents} Élèves • {stats.totalClasses} Classes
+                {stats.totalStudents} • {stats.totalClasses}
               </div>
             </div>
           </div>
@@ -464,24 +461,24 @@ export const GeneralTotalView: React.FC<GeneralTotalViewProps> = ({
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
             <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-3">
               <span className="text-xs text-sky-300 block mb-1">Moyenne Sciences</span>
-              <span className="text-lg font-bold text-white">{stats.sciencesAvg.toFixed(2)} / 20</span>
+              <span className="text-lg font-bold text-white">{formatAverage(stats.sciencesStudentCount, stats.sciencesAvg)}{stats.sciencesStudentCount > 0 ? ' / 20' : ''}</span>
             </div>
 
             <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-3">
               <span className="text-xs text-amber-300 block mb-1">Moyenne Littérature</span>
-              <span className="text-lg font-bold text-white">{stats.literatureAvg.toFixed(2)} / 20</span>
+              <span className="text-lg font-bold text-white">{formatAverage(stats.literatureStudentCount, stats.literatureAvg)}{stats.literatureStudentCount > 0 ? ' / 20' : ''}</span>
             </div>
 
             <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-3">
               <span className="text-xs text-emerald-300 block mb-1">Moyenne EPS</span>
-              <span className="text-lg font-bold text-white">{stats.epsAvg.toFixed(2)} / 20</span>
+              <span className="text-lg font-bold text-white">{formatAverage(stats.epsStudentCount, stats.epsAvg)}{stats.epsStudentCount > 0 ? ' / 20' : ''}</span>
             </div>
 
-            <div className="bg-amber-400 text-slate-900 rounded-lg p-3 shadow-md">
-              <span className="text-xs font-bold block mb-1 text-slate-900 uppercase">
+            <div className="bg-amber-400 text-amber-950 rounded-lg p-3 shadow-md">
+                <span className="text-xs font-bold block mb-1 text-amber-950 uppercase">
                 Moyenne Générale École
               </span>
-              <span className="text-xl font-black">{stats.generalAvg.toFixed(2)} / 20</span>
+              <span className="text-xl font-black">{formatAverage(stats.totalStudents, stats.generalAvg)}{stats.totalStudents > 0 ? ' / 20' : ''}</span>
             </div>
           </div>
         </div>
