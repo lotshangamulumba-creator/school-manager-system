@@ -55,7 +55,7 @@ export const SubjectsModal: React.FC<SubjectsModalProps> = ({
       try {
         const created = await api.createSubject({
           nom: newName.trim(),
-          code: `SUB-${Date.now()}`,
+          code: `SUB-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
           niveau: level,
           specialty: newSpecialty,
           coeff: Math.max(1, parseInt(newCoeff, 10) || 1),

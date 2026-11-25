@@ -1,18 +1,21 @@
 import { db, DbStudent, DbSubject, DbGrade } from './db.js';
+import { computeCeminaceGrades } from '../utils/gradeCalculations.js';
+export { computeCeminaceGrades } from '../utils/gradeCalculations.js';
 
 export interface ComputedSubjectResult {
   subjectId: string;
   subjectName: string;
   coeff: number;
   specialty: string;
-  evaluations: number;
-  dev1: number;
-  dev2: number;
-  composition: number;
-  cc: number;
-  subjectAvg: number;
-  points: number;
-  rank: number;
+  evaluations: number | null;
+  dev1: number | null;
+  dev2: number | null;
+  composition: number | null;
+  cc: number | null;
+  subjectAvg: number | null;
+  points: number | null;
+  rank: number | null;
+  isProvisional: boolean;
   appreciation: string;
 }
 
@@ -21,8 +24,9 @@ export interface ComputedStudentResult {
   subjectResults: ComputedSubjectResult[];
   totalPoints: number;
   totalCoeff: number;
-  generalAvg: number;
-  generalRank: number;
+  generalAvg: number | null;
+  generalRank: number | null;
+  isProvisional: boolean;
   isExAequo?: boolean;
   sciencesAvg: number | null;
   sciencesRank: number | null;
@@ -34,16 +38,8 @@ export interface ComputedStudentResult {
   decision: string;
 }
 
-export function computeCeminaceGrades(evaluations: number, dev1: number, dev2: number, composition: number) {
-  const cc = (evaluations + dev1 + dev2) / 3.0;
-  const subjectAvg = (cc + 2.0 * composition) / 3.0;
-  return {
-    cc: Math.round(cc * 100) / 100,
-    subjectAvg: Math.round(subjectAvg * 100) / 100
-  };
-}
-
-export function getMention(avg: number): { mention: string; decision: string } {
+export function getMention(avg: number | null): { mention: string; decision: string } {
+  if (avg === null) return { mention: 'Provisoire', decision: 'Résultats en attente de notes' };
   if (avg >= 16) return { mention: 'Très Bien', decision: 'Félicitations du Conseil de Classe' };
   if (avg >= 14) return { mention: 'Bien', decision: 'Tableau d’Honneur' };
   if (avg >= 12) return { mention: 'Assez Bien', decision: 'Encouragements' };
@@ -57,7 +53,11 @@ export function computeClassResults(
   term: '1er Trimestre' | '2ème Trimestre' | '3ème Trimestre' = '1er Trimestre'
 ): ComputedStudentResult[] {
   const data = db.getData();
-  const students = data.students.filter(s => s.classId === classId && s.statut);
+  const schoolClass = data.classes.find(candidate => candidate.id === classId);
+  if (!schoolClass) return [];
+  const students = data.students.filter(
+    student => student.classId === classId && student.academicYearId === schoolClass.academicYearId && student.statut
+  );
   const subjects = data.subjects.filter(s => s.statut);
 
   if (students.length === 0) return [];
@@ -67,9 +67,10 @@ export function computeClassResults(
   data.grades
     .filter(g =>
       g.classId === classId &&
+      g.academicYearId === schoolClass.academicYearId &&
       g.term === term &&
       [g.evaluations, g.dev1, g.dev2, g.composition].every(
-        note => Number.isFinite(note) && note >= 0 && note <= 20
+        note => note === null || (Number.isFinite(note) && note >= 0 && note <= 20)
       )
     )
     .forEach(g => {
@@ -86,33 +87,38 @@ export function computeClassResults(
     let epsPoints = 0;
     let epsCoeff = 0;
 
-    const subjectResults: ComputedSubjectResult[] = subjects.flatMap(subject => {
+    let hasAnyGrade = false;
+    let isProvisional = false;
+    const subjectResults: ComputedSubjectResult[] = subjects.map(subject => {
       const g = gradeMap.get(`${student.id}_${subject.id}`);
-      if (!g) return [];
-      const ev = g.evaluations;
-      const d1 = g.dev1;
-      const d2 = g.dev2;
-      const comp = g.composition;
+      const ev = g?.evaluations ?? null;
+      const d1 = g?.dev1 ?? null;
+      const d2 = g?.dev2 ?? null;
+      const comp = g?.composition ?? null;
+      if (ev !== null || d1 !== null || d2 !== null || comp !== null) hasAnyGrade = true;
+      const { cc, subjectAvg, isProvisional: isSubjectProvisional } = computeCeminaceGrades(ev, d1, d2, comp);
+      isProvisional ||= isSubjectProvisional;
+      const points = subjectAvg === null ? null : Math.round(subjectAvg * subject.coeff * 100) / 100;
 
-      const { cc, subjectAvg } = computeCeminaceGrades(ev, d1, d2, comp);
-      const points = Math.round(subjectAvg * subject.coeff * 100) / 100;
+      if (points !== null) {
+        totalPoints += points;
+        totalCoeff += subject.coeff;
 
-      totalPoints += points;
-      totalCoeff += subject.coeff;
-
-      if (subject.specialty === 'Sciences') {
-        sciencesPoints += points;
-        sciencesCoeff += subject.coeff;
-      } else if (subject.specialty === 'Littérature') {
-        litPoints += points;
-        litCoeff += subject.coeff;
-      } else if (subject.specialty === 'EPS') {
-        epsPoints += points;
-        epsCoeff += subject.coeff;
+        if (subject.specialty === 'Sciences') {
+          sciencesPoints += points;
+          sciencesCoeff += subject.coeff;
+        } else if (subject.specialty === 'Littérature') {
+          litPoints += points;
+          litCoeff += subject.coeff;
+        } else if (subject.specialty === 'EPS') {
+          epsPoints += points;
+          epsCoeff += subject.coeff;
+        }
       }
 
       let appreciation = 'Faible';
-      if (subjectAvg >= 16) appreciation = 'Excellent';
+      if (subjectAvg === null) appreciation = 'Provisoire';
+      else if (subjectAvg >= 16) appreciation = 'Excellent';
       else if (subjectAvg >= 14) appreciation = 'Très Bon';
       else if (subjectAvg >= 12) appreciation = 'Bon travail';
       else if (subjectAvg >= 10) appreciation = 'Passable';
@@ -129,13 +135,14 @@ export function computeClassResults(
         cc,
         subjectAvg,
         points,
-        rank: 1, // sera recalculé
-        appreciation
+        rank: null,
+        isProvisional: isSubjectProvisional,
+        appreciation,
       };
     });
 
-    const generalAvg = totalCoeff > 0 ? Math.round((totalPoints / totalCoeff) * 100) / 100 : 0;
-    if (subjectResults.length === 0) return [];
+    if (!hasAnyGrade) return [];
+    const generalAvg = totalCoeff > 0 ? Math.round((totalPoints / totalCoeff) * 100) / 100 : null;
 
     const sciencesAvg = sciencesCoeff > 0 ? Math.round((sciencesPoints / sciencesCoeff) * 100) / 100 : null;
     const literatureAvg = litCoeff > 0 ? Math.round((litPoints / litCoeff) * 100) / 100 : null;
@@ -148,7 +155,8 @@ export function computeClassResults(
       totalPoints: Math.round(totalPoints * 100) / 100,
       totalCoeff,
       generalAvg,
-      generalRank: 1,
+      generalRank: null,
+      isProvisional,
       sciencesAvg,
       sciencesRank: null,
       literatureAvg,
@@ -161,13 +169,15 @@ export function computeClassResults(
   });
 
   // Calcul du classement général avec gestion rigoureuse des ex-aequo
-  studentResults.sort((a, b) => b.generalAvg - a.generalAvg);
-  studentResults.forEach((res, idx) => {
+  const rankableStudents = studentResults
+    .filter(result => result.generalAvg !== null)
+    .sort((a, b) => (b.generalAvg ?? 0) - (a.generalAvg ?? 0));
+  rankableStudents.forEach((res, idx) => {
     if (idx === 0) {
       res.generalRank = 1;
     } else {
-      const prev = studentResults[idx - 1];
-      if (Math.abs(prev.generalAvg - res.generalAvg) < 0.001) {
+      const prev = rankableStudents[idx - 1];
+      if (Math.abs((prev.generalAvg ?? 0) - (res.generalAvg ?? 0)) < 0.001) {
         res.generalRank = prev.generalRank;
         res.isExAequo = true;
         prev.isExAequo = true;
@@ -193,7 +203,7 @@ export function computeClassResults(
   // Classement par matière
   subjects.forEach(subject => {
     const sortedForSubj = studentResults
-      .filter(result => result.subjectResults.some(subjectResult => subjectResult.subjectId === subject.id))
+      .filter(result => result.subjectResults.some(subjectResult => subjectResult.subjectId === subject.id && subjectResult.subjectAvg !== null))
       .sort((a, b) => {
       const aSub = a.subjectResults.find(s => s.subjectId === subject.id)?.subjectAvg ?? 0;
       const bSub = b.subjectResults.find(s => s.subjectId === subject.id)?.subjectAvg ?? 0;
@@ -208,7 +218,8 @@ export function computeClassResults(
         } else {
           const prevSr = sortedForSubj[idx - 1];
           const prevSubj = prevSr.subjectResults.find(s => s.subjectId === subject.id);
-          if (prevSubj && Math.abs(prevSubj.subjectAvg - subjRes.subjectAvg) < 0.001) {
+          if (prevSubj && prevSubj.subjectAvg !== null && subjRes.subjectAvg !== null &&
+              Math.abs(prevSubj.subjectAvg - subjRes.subjectAvg) < 0.001) {
             subjRes.rank = prevSubj.rank;
           } else {
             subjRes.rank = idx + 1;
@@ -218,7 +229,11 @@ export function computeClassResults(
     });
   });
 
-  return studentResults;
+  return studentResults.sort((a, b) => {
+    if (a.generalAvg === null) return b.generalAvg === null ? 0 : 1;
+    if (b.generalAvg === null) return -1;
+    return b.generalAvg - a.generalAvg;
+  });
 }
 
 export function computeEstablishmentStats(term: '1er Trimestre' | '2ème Trimestre' | '3ème Trimestre' = '1er Trimestre') {
@@ -232,18 +247,19 @@ export function computeEstablishmentStats(term: '1er Trimestre' | '2ème Trimest
 
   for (const cls of classes) {
     const results = computeClassResults(cls.id, term);
-    const count = results.length;
+    const gradedResults = results.filter(result => result.generalAvg !== null);
+    const count = gradedResults.length;
     totalStudents += count;
 
     let classAvg = 0;
     if (count > 0) {
-      const sum = results.reduce((acc, r) => acc + r.generalAvg, 0);
+      const sum = gradedResults.reduce((acc, result) => acc + (result.generalAvg ?? 0), 0);
       classAvg = Math.round((sum / count) * 100) / 100;
       totalScoreSum += sum;
       totalCoeffSum += count;
     }
 
-    const bestStudent = results[0];
+    const bestStudent = gradedResults[0];
     classStats.push({
       classId: cls.id,
       className: cls.nom,

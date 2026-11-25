@@ -1,7 +1,8 @@
 import crypto from 'crypto';
 
 export type LicensePlan = 'monthly' | 'annual';
-export type LicenseState = 'active' | 'missing' | 'invalid' | 'not_started' | 'expired' | 'unconfigured';
+export type LicenseState = 'active' | 'grace' | 'missing' | 'invalid' | 'not_started' | 'expired' | 'unconfigured';
+export const LICENSE_GRACE_PERIOD_DAYS = 14;
 
 export interface SchoolLicensePayload {
   schemaVersion: 1;
@@ -21,6 +22,7 @@ export interface SignedSchoolLicense {
 
 export interface LicenseStatus {
   state: LicenseState;
+  daysRemaining: number;
   schoolId: string;
   schoolName: string;
   license: SchoolLicensePayload | null;
@@ -70,6 +72,7 @@ export function getLicenseStatus(
 ): LicenseStatus {
   const status: LicenseStatus = {
     state: 'missing',
+    daysRemaining: 0,
     schoolId,
     schoolName,
     license: null,
@@ -110,12 +113,22 @@ export function getLicenseStatus(
   if (!signatureIsValid) return { ...status, state: 'invalid' };
 
   const currentTime = now.getTime();
-  const state: LicenseState = currentTime < new Date(payload.startsAt).getTime()
+  const startsAt = new Date(payload.startsAt).getTime();
+  const expiresAt = new Date(payload.expiresAt).getTime();
+  const graceEndsAt = expiresAt + LICENSE_GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000;
+  const state: LicenseState = currentTime < startsAt
     ? 'not_started'
-    : currentTime >= new Date(payload.expiresAt).getTime()
-      ? 'expired'
-      : 'active';
-  return { ...status, state, license: payload };
+    : currentTime < expiresAt
+      ? 'active'
+      : currentTime < graceEndsAt
+        ? 'grace'
+        : 'expired';
+  const daysRemaining = state === 'active'
+    ? Math.ceil((expiresAt - currentTime) / (24 * 60 * 60 * 1000))
+    : state === 'grace'
+      ? Math.ceil((graceEndsAt - currentTime) / (24 * 60 * 60 * 1000))
+      : 0;
+  return { ...status, state, daysRemaining, license: payload };
 }
 
 export function verifyInstallableLicense(

@@ -1,8 +1,10 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { db, DbUser, DbStudent, DbTeacher, DbClass, DbSubject, DbGrade } from './db.js';
-import { authMiddleware, requireRoles, generateToken, AuthenticatedRequest } from './auth.js';
+import rateLimit from 'express-rate-limit';
+import { z } from 'zod';
+import { db, DbUser, DbStudent, DbTeacher, DbClass, DbSubject, DbGrade, DbAcademicYear } from './db.js';
+import { authMiddleware, requireRoles, generateToken, AuthenticatedRequest, BCRYPT_COST, validatePassword } from './auth.js';
 import { computeClassResults, computeEstablishmentStats } from './academic.js';
 import {
   getConfiguredLicensePublicKey,
@@ -12,18 +14,73 @@ import {
 } from './licensing.js';
 import { DEFAULT_SCHOOL_PROFILE } from '../data/schoolProfile.js';
 import { validateSchoolProfile } from './schoolProfile.js';
+import { sanitizeBackup, validateBackup } from './backup.js';
 
 export const apiRouter = Router();
 
 const TEACHER_SCOPED_ROLES = ['TEACHER'];
 const STAFF_ROLES = ['ADMIN', 'DIRECTOR', 'SECRETARY', 'TEACHER'];
 const TERMS = ['1er Trimestre', '2ème Trimestre', '3ème Trimestre'] as const;
+const ROLES = ['ADMIN', 'DIRECTOR', 'SECRETARY', 'TEACHER', 'PARENT', 'STUDENT'] as const;
+const DUMMY_BCRYPT_HASH = '$2b$12$I15k7vo9vqu8e8xl8QJ6b.qMKIV7c5hI6zEdVSjxemfcSufkI2hzq';
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: (req) => `${req.ip || req.socket.remoteAddress || 'unknown'}|${String(req.body?.email || '').trim().toLowerCase()}`,
+  handler: (_req, res) => res.status(429).json({ error: 'Trop de tentatives de connexion. Réessayez dans 15 minutes.' }),
+});
 
 function resolveClass(data: ReturnType<typeof db.getData>, classId?: unknown, className?: unknown) {
   if (typeof classId !== 'string' || !classId) return null;
   const cls = data.classes.find(candidate => candidate.id === classId);
   if (!cls || (className !== undefined && className !== cls.nom)) return null;
   return cls;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function getActiveAcademicYear(data: ReturnType<typeof db.getData>) {
+  return data.academicYears.find(year => year.status === 'active') || null;
+}
+
+export function parseGrade(value: unknown): number | null {
+  if (value === undefined || value === null || (typeof value === 'string' && value.trim() === '')) return null;
+  if (typeof value !== 'number' && typeof value !== 'string') throw new Error('Note invalide.');
+  const parsed = typeof value === 'string' ? Number(value.trim()) : value;
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 20) {
+    throw new Error('La note doit être un nombre compris entre 0 et 20.');
+  }
+  return parsed;
+}
+
+function isValidBirthDate(value: string): boolean {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value);
+  if (!match) return false;
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return false;
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  return date.getTime() <= today.getTime();
+}
+
+function generateMatricule(data: ReturnType<typeof db.getData>): string {
+  const prefix = data.schoolProfile.matriculePrefix.trim();
+  const existing = new Set(data.students.map(student => student.matricule.trim().toLowerCase()));
+  let sequence = 1;
+  let matricule = `${prefix}-${String(sequence).padStart(3, '0')}`;
+  while (existing.has(matricule.toLowerCase())) {
+    sequence += 1;
+    matricule = `${prefix}-${String(sequence).padStart(3, '0')}`;
+  }
+  return matricule;
 }
 
 function teacherCanAccessClass(req: AuthenticatedRequest, cls: DbClass) {
@@ -81,26 +138,24 @@ function normalizeStudentInput(body: Record<string, unknown>): NormalizedStudent
 // ============================================================================
 
 // POST /api/auth/login
-apiRouter.post('/auth/login', (req: Request, res: Response) => {
+apiRouter.post('/auth/login', loginLimiter, async (req: Request, res: Response) => {
   const { email, password } = req.body;
-  if (!email || !password) {
+  if (typeof email !== 'string' || typeof password !== 'string' || !email || !password) {
     return res.status(400).json({ error: 'Email et mot de passe requis.' });
   }
 
   const data = db.getData();
-  const user = data.users.find(u => u.email.toLowerCase() === email.toLowerCase());
-
-  if (!user) {
-    return res.status(401).json({ error: 'Identifiants invalides (email introuvable).' });
+  const normalizedEmail = email.trim().toLowerCase();
+  const user = data.users.find(candidate => candidate.email.toLowerCase() === normalizedEmail);
+  let valid = false;
+  try {
+    valid = await bcrypt.compare(password, user?.passwordHash || DUMMY_BCRYPT_HASH);
+  } catch {
+    valid = false;
   }
-
-  if (!user.actif) {
-    return res.status(403).json({ error: 'Ce compte utilisateur a été désactivé par l’administration.' });
-  }
-
-  const valid = bcrypt.compareSync(password, user.passwordHash);
-  if (!valid) {
-    return res.status(401).json({ error: 'Mot de passe incorrect.' });
+  if (!user || !user.actif || !valid) {
+    db.logAudit('LOGIN_FAILURE', 'Tentative de connexion échouée.', user?.id, normalizedEmail, req.ip);
+    return res.status(401).json({ error: 'Identifiants invalides' });
   }
 
   const token = generateToken(user);
@@ -147,21 +202,24 @@ apiRouter.get('/school-profile', (_req: Request, res: Response) => {
 });
 
 // POST /api/auth/change-password
-apiRouter.post('/auth/change-password', authMiddleware, (req: AuthenticatedRequest, res: Response) => {
+apiRouter.post('/auth/change-password', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   const { oldPassword, newPassword } = req.body;
-  if (!newPassword || newPassword.length < 6) {
-    return res.status(400).json({ error: 'Le nouveau mot de passe doit comporter au moins 6 caractères.' });
+  if (typeof oldPassword !== 'string' || !oldPassword) {
+    return res.status(400).json({ error: 'L’ancien mot de passe est obligatoire.' });
   }
 
   const data = db.getData();
   const user = data.users.find(u => u.id === req.user?.id);
   if (!user) return res.status(404).json({ error: 'Utilisateur introuvable.' });
 
-  if (oldPassword && !bcrypt.compareSync(oldPassword, user.passwordHash)) {
-    return res.status(400).json({ error: 'L’ancien mot de passe est incorrect.' });
+  if (!await bcrypt.compare(oldPassword, user.passwordHash)) {
+    return res.status(401).json({ error: 'L’ancien mot de passe est incorrect.' });
   }
 
-  user.passwordHash = bcrypt.hashSync(newPassword, 10);
+  const passwordError = validatePassword(newPassword, oldPassword);
+  if (passwordError) return res.status(400).json({ error: passwordError });
+
+  user.passwordHash = await bcrypt.hash(newPassword, BCRYPT_COST);
   user.updatedAt = new Date().toISOString();
   db.persist();
   db.logAudit('CHANGE_PASSWORD', `Changement de mot de passe pour ${user.email}`, user.id, user.email, req.ip);
@@ -231,7 +289,7 @@ apiRouter.post('/license/install', authMiddleware, requireRoles(['ADMIN']), (req
     createdAt: now,
   };
   const auditEntry = {
-    id: `log-${Date.now()}-${crypto.randomUUID()}`,
+    id: crypto.randomUUID(),
     userId: req.user!.id,
     userEmail: req.user!.email,
     action: 'LICENSE_INSTALLED',
@@ -262,7 +320,7 @@ apiRouter.post('/license/install', authMiddleware, requireRoles(['ADMIN']), (req
   });
 });
 
-// Keep authentication, license status, installation, and password recovery available when a license is blocked.
+// Authentication and license management remain reachable when a license is blocked.
 apiRouter.use(authMiddleware, (req: AuthenticatedRequest, res: Response, next) => {
   const data = db.getData();
   const status = getLicenseStatus(
@@ -271,7 +329,21 @@ apiRouter.use(authMiddleware, (req: AuthenticatedRequest, res: Response, next) =
     data.establishmentName,
     getConfiguredLicensePublicKey()
   );
-  if (status.state === 'active') return next();
+  if (status.state === 'active' || status.state === 'grace') return next();
+  const isReadRequest = req.method === 'GET';
+  const reportReadPaths = [
+    '/backup/export',
+    '/classes',
+    '/students',
+    '/subjects',
+    '/grades',
+  ];
+  const isBulletinRead = req.path.startsWith('/results/class/');
+  if (
+    isReadRequest &&
+    (status.state === 'expired' ||
+      (status.state === 'missing' && (reportReadPaths.includes(req.path) || isBulletinRead)))
+  ) return next();
 
   const code = status.state === 'expired' ? 'LICENSE_EXPIRED' : 'LICENSE_BLOCKED';
   return res.status(402).json({
@@ -279,9 +351,101 @@ apiRouter.use(authMiddleware, (req: AuthenticatedRequest, res: Response, next) =
     state: status.state,
     schoolId: status.schoolId,
     error: status.state === 'expired'
-      ? 'La licence de cette école a expiré.'
+      ? 'La licence a expiré : l’API est en lecture seule. Renouvelez-la pour reprendre les écritures.'
       : 'Une licence valide est nécessaire pour utiliser MonPilot School ERP.',
   });
+});
+
+const academicYearInputSchema = z.object({
+  label: z.string().trim().min(1).max(80),
+  startDate: z.string().refine(value => /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(`${value}T00:00:00.000Z`))),
+  endDate: z.string().refine(value => /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(`${value}T00:00:00.000Z`))),
+}).strict().refine(value => value.startDate < value.endDate, {
+  path: ['endDate'],
+  message: 'La date de fin doit être postérieure à la date de début.',
+});
+
+apiRouter.get('/academic-years', authMiddleware, requireRoles(['ADMIN']), (_req: Request, res: Response) => {
+  res.json(db.getData().academicYears);
+});
+
+apiRouter.post('/academic-years', authMiddleware, requireRoles(['ADMIN']), (req: Request, res: Response) => {
+  const parsed = academicYearInputSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Année scolaire invalide.' });
+  const { label, startDate, endDate } = parsed.data;
+  if (typeof label !== 'string' || typeof startDate !== 'string' || typeof endDate !== 'string') {
+    return res.status(400).json({ error: 'Année scolaire invalide.' });
+  }
+  const data = db.getData();
+  if (data.academicYears.some(year => year.label.toLowerCase() === label.toLowerCase())) {
+    return res.status(409).json({ error: 'Cette année scolaire existe déjà.' });
+  }
+  const year: DbAcademicYear = {
+    id: crypto.randomUUID(),
+    label,
+    startDate,
+    endDate,
+    status: 'draft',
+    createdAt: new Date().toISOString(),
+  };
+  data.academicYears.push(year);
+  db.persist();
+  res.status(201).json(year);
+});
+
+apiRouter.put('/academic-years/:id', authMiddleware, requireRoles(['ADMIN']), (req: Request, res: Response) => {
+  const parsed = academicYearInputSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Année scolaire invalide.' });
+  const { label, startDate, endDate } = parsed.data;
+  if (typeof label !== 'string' || typeof startDate !== 'string' || typeof endDate !== 'string') {
+    return res.status(400).json({ error: 'Année scolaire invalide.' });
+  }
+  const data = db.getData();
+  const year = data.academicYears.find(candidate => candidate.id === req.params.id);
+  if (!year) return res.status(404).json({ error: 'Année scolaire introuvable.' });
+  if (year.status === 'closed') return res.status(409).json({ error: 'Une année clôturée ne peut pas être modifiée.' });
+  if (data.academicYears.some(candidate => candidate.id !== year.id && candidate.label.toLowerCase() === label.toLowerCase())) {
+    return res.status(409).json({ error: 'Cette année scolaire existe déjà.' });
+  }
+  Object.assign(year, { label, startDate, endDate });
+  db.persist();
+  res.json(year);
+});
+
+apiRouter.delete('/academic-years/:id', authMiddleware, requireRoles(['ADMIN']), (req: Request, res: Response) => {
+  const data = db.getData();
+  const index = data.academicYears.findIndex(year => year.id === req.params.id);
+  if (index < 0) return res.status(404).json({ error: 'Année scolaire introuvable.' });
+  const year = data.academicYears[index];
+  if (year.status === 'active' || data.classes.some(item => item.academicYearId === year.id) ||
+      data.students.some(item => item.academicYearId === year.id) || data.grades.some(item => item.academicYearId === year.id)) {
+    return res.status(409).json({ error: 'Une année active ou utilisée par des données ne peut pas être supprimée.' });
+  }
+  data.academicYears.splice(index, 1);
+  db.persist();
+  res.json({ success: true });
+});
+
+apiRouter.post('/academic-years/:id/activate', authMiddleware, requireRoles(['ADMIN']), (req: Request, res: Response) => {
+  const data = db.getData();
+  const year = data.academicYears.find(candidate => candidate.id === req.params.id);
+  if (!year) return res.status(404).json({ error: 'Année scolaire introuvable.' });
+  if (year.status === 'closed') return res.status(409).json({ error: 'Une année clôturée ne peut pas être réactivée.' });
+  for (const candidate of data.academicYears) {
+    if (candidate.status === 'active') candidate.status = 'draft';
+  }
+  year.status = 'active';
+  db.persist();
+  res.json(year);
+});
+
+apiRouter.post('/academic-years/:id/close', authMiddleware, requireRoles(['ADMIN']), (req: Request, res: Response) => {
+  const data = db.getData();
+  const year = data.academicYears.find(candidate => candidate.id === req.params.id);
+  if (!year) return res.status(404).json({ error: 'Année scolaire introuvable.' });
+  year.status = 'closed';
+  db.persist();
+  res.json(year);
 });
 
 apiRouter.put('/school-profile', authMiddleware, requireRoles(['ADMIN']), (req: AuthenticatedRequest, res: Response) => {
@@ -299,7 +463,7 @@ apiRouter.put('/school-profile', authMiddleware, requireRoles(['ADMIN']), (req: 
   const previousAuditLogs = data.auditLogs;
   const now = new Date().toISOString();
   const auditEntry = {
-    id: `log-${Date.now()}-${crypto.randomUUID()}`,
+    id: crypto.randomUUID(),
     userId: req.user!.id,
     userEmail: req.user!.email,
     action: 'UPDATE_SCHOOL_PROFILE',
@@ -336,26 +500,48 @@ apiRouter.get('/users', authMiddleware, requireRoles(['ADMIN']), (req: Request, 
   res.json(safeUsers);
 });
 
-apiRouter.post('/users', authMiddleware, requireRoles(['ADMIN']), (req: AuthenticatedRequest, res: Response) => {
-  const { email, password, nom, prenom, role, telephone } = req.body;
-  if (!email || !password || !nom || !prenom) {
+const createUserSchema = z.object({
+  email: z.string().trim().email().transform(value => value.toLowerCase()),
+  password: z.string(),
+  nom: z.string().trim().min(1),
+  prenom: z.string().trim().min(1),
+  role: z.enum(ROLES).default('TEACHER'),
+  telephone: z.string().optional(),
+}).strict();
+
+const updateUserSchema = z.object({
+  email: z.string().trim().email().transform(value => value.toLowerCase()).optional(),
+  password: z.string().optional(),
+  nom: z.string().trim().min(1).optional(),
+  prenom: z.string().trim().min(1).optional(),
+  role: z.enum(ROLES).optional(),
+  actif: z.boolean().optional(),
+  telephone: z.string().optional(),
+}).strict().refine(value => Object.values(value).some(item => item !== undefined));
+
+apiRouter.post('/users', authMiddleware, requireRoles(['ADMIN']), async (req: AuthenticatedRequest, res: Response) => {
+  const parsed = createUserSchema.safeParse(req.body);
+  if (!parsed.success) {
     return res.status(400).json({ error: 'Nom, prénom, email et mot de passe sont obligatoires.' });
   }
+  const { email, password, nom, prenom, role, telephone } = parsed.data;
+  const passwordError = validatePassword(password);
+  if (passwordError) return res.status(400).json({ error: passwordError });
 
   const data = db.getData();
-  if (data.users.some(u => u.email.toLowerCase() === email.toLowerCase())) {
-    return res.status(400).json({ error: 'Un utilisateur avec cet email existe déjà.' });
+  if (data.users.some(u => u.email.toLowerCase() === email)) {
+    return res.status(409).json({ error: 'Un utilisateur avec cet email existe déjà.' });
   }
 
   const now = new Date().toISOString();
   const newUser: DbUser = {
-    id: `usr-${Date.now()}`,
+    id: crypto.randomUUID(),
     email,
-    passwordHash: bcrypt.hashSync(password, 10),
+    passwordHash: await bcrypt.hash(password, BCRYPT_COST),
     nom: nom.toUpperCase(),
     prenom,
     telephone,
-    role: role || 'TEACHER',
+    role,
     actif: true,
     createdAt: now,
     updatedAt: now
@@ -369,20 +555,40 @@ apiRouter.post('/users', authMiddleware, requireRoles(['ADMIN']), (req: Authenti
   res.status(201).json(safe);
 });
 
-apiRouter.put('/users/:id', authMiddleware, requireRoles(['ADMIN']), (req: AuthenticatedRequest, res: Response) => {
+apiRouter.put('/users/:id', authMiddleware, requireRoles(['ADMIN']), async (req: AuthenticatedRequest, res: Response) => {
+  const parsed = updateUserSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Données utilisateur invalides.' });
   const data = db.getData();
   const user = data.users.find(u => u.id === req.params.id);
   if (!user) return res.status(404).json({ error: 'Utilisateur non trouvé.' });
 
-  const { nom, prenom, role, actif, telephone, password } = req.body;
-  if (nom) user.nom = nom.toUpperCase();
-  if (prenom) user.prenom = prenom;
-  if (role) user.role = role;
-  if (typeof actif === 'boolean') user.actif = actif;
-  if (telephone !== undefined) user.telephone = telephone;
-  if (password && password.length >= 6) {
-    user.passwordHash = bcrypt.hashSync(password, 10);
+  const { nom, prenom, email, role, actif, telephone, password } = parsed.data;
+  const nextRole = role ?? user.role;
+  const nextActive = actif ?? user.actif;
+  if (email && email !== user.email && data.users.some(candidate => candidate.id !== user.id && candidate.email.toLowerCase() === email)) {
+    return res.status(409).json({ error: 'Un utilisateur avec cet email existe déjà.' });
   }
+  if (user.id === req.user?.id && (nextRole !== 'ADMIN' || !nextActive)) {
+    return res.status(400).json({ error: 'Un administrateur ne peut pas retirer son propre rôle ADMIN ni se désactiver.' });
+  }
+  if (user.role === 'ADMIN' && user.actif && (nextRole !== 'ADMIN' || !nextActive)) {
+    const activeAdmins = data.users.filter(candidate => candidate.role === 'ADMIN' && candidate.actif).length;
+    if (activeAdmins <= 1) return res.status(400).json({ error: 'Le dernier administrateur actif ne peut pas être retiré.' });
+  }
+  if (password !== undefined) {
+    const passwordError = validatePassword(password);
+    if (passwordError) return res.status(400).json({ error: passwordError });
+    if (await bcrypt.compare(password, user.passwordHash)) {
+      return res.status(400).json({ error: 'Le nouveau mot de passe doit être différent de l’ancien.' });
+    }
+    user.passwordHash = await bcrypt.hash(password, BCRYPT_COST);
+  }
+  if (nom !== undefined) user.nom = nom.toUpperCase();
+  if (prenom !== undefined) user.prenom = prenom;
+  if (email !== undefined) user.email = email;
+  user.role = nextRole;
+  user.actif = nextActive;
+  if (telephone !== undefined) user.telephone = telephone;
   user.updatedAt = new Date().toISOString();
 
   db.persist();
@@ -401,7 +607,7 @@ apiRouter.get('/teachers', authMiddleware, (req: Request, res: Response) => {
   res.json(data.teachers);
 });
 
-apiRouter.post('/teachers', authMiddleware, requireRoles(['ADMIN']), (req: AuthenticatedRequest, res: Response) => {
+apiRouter.post('/teachers', authMiddleware, requireRoles(['ADMIN']), async (req: AuthenticatedRequest, res: Response) => {
   const { nom, prenom, email, telephone, specialite, createAccount, initialPassword } = req.body;
   if (!nom || !prenom || !email) {
     return res.status(400).json({ error: 'Nom, prénom et email sont requis.' });
@@ -412,14 +618,16 @@ apiRouter.post('/teachers', authMiddleware, requireRoles(['ADMIN']), (req: Authe
   let userId: string | undefined = undefined;
 
   if (createAccount && initialPassword) {
+    const passwordError = validatePassword(initialPassword);
+    if (passwordError) return res.status(400).json({ error: passwordError });
     const existingUser = data.users.find(u => u.email.toLowerCase() === email.toLowerCase());
     if (existingUser) {
       userId = existingUser.id;
     } else {
       const newUser: DbUser = {
-        id: `usr-${Date.now()}`,
+        id: crypto.randomUUID(),
         email,
-        passwordHash: bcrypt.hashSync(initialPassword, 10),
+        passwordHash: await bcrypt.hash(initialPassword, BCRYPT_COST),
         nom: nom.toUpperCase(),
         prenom,
         telephone,
@@ -434,7 +642,7 @@ apiRouter.post('/teachers', authMiddleware, requireRoles(['ADMIN']), (req: Authe
   }
 
   const teacher: DbTeacher = {
-    id: `tch-${Date.now()}`,
+    id: crypto.randomUUID(),
     userId,
     nom: nom.toUpperCase(),
     prenom,
@@ -485,18 +693,20 @@ apiRouter.post('/classes', authMiddleware, requireRoles(['ADMIN']), (req: Authen
   }
 
   const data = db.getData();
-  if (data.classes.some(c => c.nom.toLowerCase() === nom.toLowerCase())) {
+  const year = getActiveAcademicYear(data);
+  if (!year) return res.status(409).json({ error: 'Aucune année scolaire active.' });
+  if (data.classes.some(c => c.nom.toLowerCase() === nom.toLowerCase() && c.academicYearId === year.id)) {
     return res.status(400).json({ error: `La classe ${nom} existe déjà.` });
   }
 
   const newClass: DbClass = {
-    id: `cls-${Date.now()}`,
+    id: crypto.randomUUID(),
     nom,
     niveau,
     section,
     capacite: Number(capacite) || 45,
     statut: true,
-    academicYearId: 'ay-2025-2026',
+    academicYearId: year.id,
     headTeacherId,
     createdAt: new Date().toISOString()
   };
@@ -542,7 +752,7 @@ apiRouter.post('/subjects', authMiddleware, requireRoles(['ADMIN']), (req: Authe
 
   const data = db.getData();
   const newSubject: DbSubject = {
-    id: `sub-${Date.now()}`,
+    id: crypto.randomUUID(),
     nom,
     code: code.toUpperCase(),
     niveau: niveau || 'Collège',
@@ -616,17 +826,27 @@ apiRouter.post('/students', authMiddleware, requireRoles(STAFF_ROLES), (req: Aut
   const data = db.getData();
   const cls = resolveClass(data, classId, className);
   if (!cls) return rejectMismatchedReference(res, 'classId doit désigner une classe existante et className doit correspondre exactement.');
+  const year = getActiveAcademicYear(data);
+  if (!year || cls.academicYearId !== year.id) {
+    return res.status(409).json({ error: 'La classe n’appartient pas à l’année scolaire active.' });
+  }
   if (!teacherCanAccessClass(req, cls)) return res.status(403).json({ error: 'Vous ne pouvez gérer que votre périmètre de classe.' });
   const targetClassId = cls.id;
   const targetClassName = cls.nom;
 
+  if (!isValidBirthDate(dateNaissance.trim())) {
+    return res.status(400).json({ error: 'La date de naissance doit être une date réelle au format jj/mm/aaaa et ne pas être future.' });
+  }
   const autoMatricule = typeof matricule === 'string' && matricule.trim()
     ? matricule.trim()
-    : `CEM-${String(data.students.length + 1).padStart(3, '0')}`;
+    : generateMatricule(data);
+  if (data.students.some(student => student.matricule.toLowerCase() === autoMatricule.toLowerCase())) {
+    return res.status(409).json({ error: `Le matricule ${autoMatricule} existe déjà.` });
+  }
   const now = new Date().toISOString();
 
   const newStudent: DbStudent = {
-    id: autoMatricule,
+    id: crypto.randomUUID(),
     matricule: autoMatricule,
     nom: nom.trim().toUpperCase(),
     prenom: prenom.trim(),
@@ -636,6 +856,7 @@ apiRouter.post('/students', authMiddleware, requireRoles(STAFF_ROLES), (req: Aut
     parentPhone: parentPhone || '',
     classId: targetClassId,
     className: targetClassName,
+    academicYearId: year.id,
     statut: true,
     createdAt: now,
     updatedAt: now
@@ -665,7 +886,12 @@ apiRouter.put('/students/:id', authMiddleware, requireRoles(STAFF_ROLES), (req: 
   if (typeof nom === 'string' && nom.trim()) student.nom = nom.trim().toUpperCase();
   if (typeof prenom === 'string' && prenom.trim()) student.prenom = prenom.trim();
   if (sexe) student.sexe = sexe === 'F' ? 'F' : 'M';
-  if (typeof dateNaissance === 'string' && dateNaissance.trim()) student.dateNaissance = dateNaissance.trim();
+  if (typeof dateNaissance === 'string' && dateNaissance.trim()) {
+    if (!isValidBirthDate(dateNaissance.trim())) {
+      return res.status(400).json({ error: 'La date de naissance doit être une date réelle au format jj/mm/aaaa et ne pas être future.' });
+    }
+    student.dateNaissance = dateNaissance.trim();
+  }
   if (lieuNaissance !== undefined) student.lieuNaissance = lieuNaissance;
   if (parentPhone !== undefined) student.parentPhone = parentPhone;
   if (classId !== undefined || className !== undefined) {
@@ -711,32 +937,50 @@ apiRouter.post('/students/batch-import', authMiddleware, requireRoles(STAFF_ROLE
   const data = db.getData();
   const cls = resolveClass(data, targetClassId, targetClassName);
   if (!cls) return rejectMismatchedReference(res, 'targetClassId doit désigner une classe existante et targetClassName doit correspondre.');
+  const year = getActiveAcademicYear(data);
+  if (!year || cls.academicYearId !== year.id) {
+    return res.status(409).json({ error: 'La classe n’appartient pas à l’année scolaire active.' });
+  }
   if (!teacherCanAccessClass(req, cls)) return res.status(403).json({ error: 'Vous ne pouvez importer que dans votre périmètre de classe.' });
   const now = new Date().toISOString();
   const pendingStudents: DbStudent[] = [];
   const importedMatricules = new Set<string>();
-  for (const row of importedList) {
-    if (!row || !row.nom || !row.prenom) {
+  for (const rawRow of importedList) {
+    if (!isRecord(rawRow)) {
+      return res.status(400).json({ error: 'Chaque ligne importée doit être un objet valide.' });
+    }
+    const row = normalizeStudentInput(rawRow);
+    if (!row.nom?.trim() || !row.prenom?.trim()) {
       return res.status(400).json({ error: 'Chaque ligne importée doit contenir un nom et un prénom.' });
     }
-    const matricule = row.matricule || `CEM-${String(data.students.length + 1 + pendingStudents.length).padStart(3, '0')}`;
-    
-    // Vérifier doublon
-    if (data.students.some(s => s.matricule === matricule) || importedMatricules.has(matricule)) {
-      return res.status(400).json({ error: `Matricule dupliqué: ${matricule}. Import annulé.` });
+    const dateNaissance = String(row.dateNaissance || '01/01/2010');
+    if (!isValidBirthDate(dateNaissance)) {
+      return res.status(400).json({ error: `Date de naissance invalide pour ${row.nom}: utilisez jj/mm/aaaa et une date passée ou présente.` });
     }
-    importedMatricules.add(matricule);
+    const matricule = row.matricule?.trim() || generateMatricule({
+      ...data,
+      students: [...data.students, ...pendingStudents],
+    });
+    const normalizedMatricule = matricule.toLowerCase();
+    if (
+      data.students.some(student => student.matricule.trim().toLowerCase() === normalizedMatricule) ||
+      importedMatricules.has(normalizedMatricule)
+    ) {
+      return res.status(409).json({ error: `Matricule dupliqué: ${matricule}. Import annulé.` });
+    }
+    importedMatricules.add(normalizedMatricule);
 
     const newStudent: DbStudent = {
-      id: matricule,
+      id: crypto.randomUUID(),
       matricule,
-      nom: String(row.nom).toUpperCase(),
-      prenom: String(row.prenom),
+      nom: row.nom.trim().toUpperCase(),
+      prenom: row.prenom.trim(),
       sexe: row.sexe === 'F' ? 'F' : 'M',
-      dateNaissance: row.dateNaissance || row.dob || '01/01/2010',
-      parentPhone: row.parentPhone || row.telephone || '',
+      dateNaissance,
+      parentPhone: row.parentPhone || '',
       classId: cls.id,
       className: cls.nom,
+      academicYearId: year.id,
       statut: true,
       createdAt: now,
       updatedAt: now
@@ -793,6 +1037,10 @@ apiRouter.post('/grades/batch', authMiddleware, requireRoles(STAFF_ROLES), (req:
   const data = db.getData();
   const cls = resolveClass(data, classId, className);
   if (!cls) return rejectMismatchedReference(res, 'classId/className ne correspondent pas à une classe existante.');
+  const activeYear = getActiveAcademicYear(data);
+  if (!activeYear || cls.academicYearId !== activeYear.id) {
+    return res.status(409).json({ error: 'La saisie est limitée aux classes de l’année scolaire active.' });
+  }
   if (!teacherCanAccessClass(req, cls)) return res.status(403).json({ error: 'Vous ne pouvez saisir des notes que dans votre périmètre de classe.' });
   const actorTeacherId = data.teachers.find(teacher => teacher.userId === req.user?.id)?.id;
   const selectedTerm = term || '1er Trimestre';
@@ -802,37 +1050,47 @@ apiRouter.post('/grades/batch', authMiddleware, requireRoles(STAFF_ROLES), (req:
   const nextGrades = [...data.grades];
 
   for (const entry of gradeEntries) {
+    if (!isRecord(entry)) {
+      return res.status(400).json({ error: 'Entrée de note invalide; lot annulé.' });
+    }
     const { studentId, subjectId, evaluations, dev1, dev2, composition, observation } = entry;
+    if (typeof studentId !== 'string' || typeof subjectId !== 'string' ||
+        (observation !== undefined && observation !== null && typeof observation !== 'string')) {
+      return res.status(400).json({ error: 'Référence ou observation de note invalide; lot annulé.' });
+    }
+    const gradeObservation = typeof observation === 'string' ? observation : undefined;
     const student = data.students.find(candidate => candidate.id === studentId && candidate.statut);
     const subject = data.subjects.find(candidate => candidate.id === subjectId && candidate.statut);
-    if (!student || student.classId !== cls.id) {
+    if (!student || student.classId !== cls.id || student.academicYearId !== activeYear.id) {
       return res.status(400).json({ error: `Élève ${studentId} absent de la classe ${cls.id}. Lot annulé.` });
     }
     if (!subject) {
       return res.status(400).json({ error: `Matière inconnue: ${subjectId}. Lot annulé.` });
     }
 
-    // Validation stricte 0 <= note <= 20
-    const ev = Number(evaluations);
-    const d1 = Number(dev1);
-    const d2 = Number(dev2);
-    const cp = Number(composition);
-
-    if (
-      isNaN(ev) || ev < 0 || ev > 20 ||
-      isNaN(d1) || d1 < 0 || d1 > 20 ||
-      isNaN(d2) || d2 < 0 || d2 > 20 ||
-      isNaN(cp) || cp < 0 || cp > 20
-    ) {
+    let ev: number | null;
+    let d1: number | null;
+    let d2: number | null;
+    let cp: number | null;
+    try {
+      ev = parseGrade(evaluations);
+      d1 = parseGrade(dev1);
+      d2 = parseGrade(dev2);
+      cp = parseGrade(composition);
+    } catch (error) {
       return res.status(400).json({
-        error: `Valeur de note invalide pour l'élève ${studentId}. Toutes les notes doivent être des nombres compris entre 0 et 20.`
+        error: `Valeur de note invalide pour l'élève ${studentId}: ${error instanceof Error ? error.message : 'lot annulé.'}`
       });
     }
 
     const existingIdx = nextGrades.findIndex(
-      g => g.studentId === studentId && g.subjectId === subjectId && g.classId === cls.id && g.term === selectedTerm
+      g => g.studentId === studentId && g.subjectId === subjectId && g.classId === cls.id &&
+        g.academicYearId === activeYear.id && g.term === selectedTerm
     );
 
+    if (existingIdx < 0 && ev === null && d1 === null && d2 === null && cp === null && observation === undefined) {
+      continue;
+    }
     if (existingIdx >= 0) {
       nextGrades[existingIdx] = {
         ...nextGrades[existingIdx],
@@ -840,26 +1098,26 @@ apiRouter.post('/grades/batch', authMiddleware, requireRoles(STAFF_ROLES), (req:
         dev1: d1,
         dev2: d2,
         composition: cp,
-        observation: observation ?? nextGrades[existingIdx].observation,
+        observation: gradeObservation ?? nextGrades[existingIdx].observation,
         teacherId: actorTeacherId ?? nextGrades[existingIdx].teacherId,
         updatedAt: now
       };
     } else {
       nextGrades.push({
-        id: `grd-${studentId}-${subjectId}-${Date.now()}`,
+        id: crypto.randomUUID(),
         studentId,
         subjectId,
         subjectName: subject.nom,
         classId: cls.id,
         className: cls.nom,
         teacherId: actorTeacherId,
-        academicYearId: 'ay-2025-2026',
+        academicYearId: activeYear.id,
         term: selectedTerm,
         evaluations: ev,
         dev1: d1,
         dev2: d2,
         composition: cp,
-        observation,
+        observation: gradeObservation,
         createdAt: now,
         updatedAt: now
       });
@@ -924,41 +1182,132 @@ apiRouter.get('/backup/export', authMiddleware, requireRoles(['ADMIN']), (req: A
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-zA-Z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '') || 'ecole';
-  res.setHeader('Content-Disposition', `attachment; filename="${schoolSlug}_backup_${Date.now()}.json"`);
-  res.send(JSON.stringify(data, null, 2));
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  res.setHeader('Content-Disposition', `attachment; filename="${schoolSlug}_backup_${timestamp}.json"`);
+  res.send(JSON.stringify(sanitizeBackup(data), null, 2));
 });
 
 apiRouter.post('/backup/restore', authMiddleware, requireRoles(['ADMIN']), (req: AuthenticatedRequest, res: Response) => {
-  const { backupData } = req.body;
-  if (
-    !backupData ||
-    !Array.isArray(backupData.students) ||
-    !Array.isArray(backupData.users) ||
-    !Array.isArray(backupData.classes) ||
-    !Array.isArray(backupData.subjects) ||
-    !Array.isArray(backupData.grades)
-  ) {
-    return res.status(400).json({ error: 'Fichier de sauvegarde invalide.' });
+  const { backupData, dryRun = false } = req.body || {};
+  if (typeof dryRun !== 'boolean') return res.status(400).json({ error: 'dryRun doit être un booléen.' });
+  const validation = validateBackup(backupData);
+  if (validation.data?.schoolProfile && !validateSchoolProfile(validation.data.schoolProfile)) {
+    validation.errors.push('schoolProfile: profil d’établissement invalide.');
+  }
+  if (dryRun) {
+    return res.json({
+      valid: validation.data !== null && validation.errors.length === 0,
+      counts: validation.counts,
+      errors: validation.errors,
+    });
+  }
+  if (!validation.data || validation.errors.length > 0) {
+    return res.status(400).json({ error: 'Fichier de sauvegarde invalide.', errors: validation.errors });
   }
 
+  const backup = validation.data;
   const current = db.getData();
   const previous = JSON.parse(JSON.stringify(current)) as typeof current;
   const before = {
-    users: current.users.length,
     students: current.students.length,
     grades: current.grades.length
   };
+  const schoolClassById = new Map(backup.classes.map(schoolClass => [schoolClass.id, schoolClass]));
+  const timestamp = new Date().toISOString();
+  const restoredStudents: DbStudent[] = backup.students.map(student => ({
+    id: student.id,
+    matricule: student.matricule,
+    nom: student.nom,
+    prenom: student.prenom,
+    sexe: student.sexe,
+    dateNaissance: student.dateNaissance,
+    lieuNaissance: typeof student.lieuNaissance === 'string' ? student.lieuNaissance : undefined,
+    adresse: typeof student.adresse === 'string' ? student.adresse : undefined,
+    telephone: typeof student.telephone === 'string' ? student.telephone : undefined,
+    parentPhone: typeof student.parentPhone === 'string' ? student.parentPhone : undefined,
+    email: typeof student.email === 'string' ? student.email : undefined,
+    photoUrl: typeof student.photoUrl === 'string' ? student.photoUrl : undefined,
+    statut: student.statut,
+    classId: student.classId,
+    className: student.className,
+    academicYearId: student.academicYearId || schoolClassById.get(student.classId)!.academicYearId,
+    createdAt: typeof student.createdAt === 'string' ? student.createdAt : timestamp,
+    updatedAt: typeof student.updatedAt === 'string' ? student.updatedAt : timestamp,
+  }));
+  const restoredClasses: DbClass[] = backup.classes.map(schoolClass => ({
+    id: schoolClass.id,
+    nom: schoolClass.nom,
+    niveau: schoolClass.niveau,
+    section: typeof schoolClass.section === 'string' ? schoolClass.section : undefined,
+    capacite: schoolClass.capacite,
+    statut: schoolClass.statut,
+    academicYearId: schoolClass.academicYearId,
+    headTeacherId: typeof schoolClass.headTeacherId === 'string' ? schoolClass.headTeacherId : undefined,
+    createdAt: typeof schoolClass.createdAt === 'string' ? schoolClass.createdAt : timestamp,
+  }));
+  const restoredGrades: DbGrade[] = backup.grades.map(grade => ({
+    id: grade.id,
+    studentId: grade.studentId,
+    subjectId: grade.subjectId,
+    subjectName: grade.subjectName,
+    classId: grade.classId,
+    className: grade.className,
+    teacherId: typeof grade.teacherId === 'string' ? grade.teacherId : undefined,
+    academicYearId: grade.academicYearId || schoolClassById.get(grade.classId)!.academicYearId,
+    term: grade.term,
+    evaluations: grade.evaluations,
+    dev1: grade.dev1,
+    dev2: grade.dev2,
+    composition: grade.composition,
+    observation: typeof grade.observation === 'string' ? grade.observation : undefined,
+    createdAt: typeof grade.createdAt === 'string' ? grade.createdAt : timestamp,
+    updatedAt: typeof grade.updatedAt === 'string' ? grade.updatedAt : timestamp,
+  }));
+  const restoredSubjects: DbSubject[] = backup.subjects.map(subject => ({
+    id: subject.id,
+    nom: subject.nom,
+    code: subject.code,
+    niveau: subject.niveau,
+    specialty: subject.specialty,
+    coeff: subject.coeff,
+    statut: subject.statut,
+    createdAt: typeof subject.createdAt === 'string' ? subject.createdAt : timestamp,
+  }));
+  const restoredTeachers: DbTeacher[] = backup.teachers.map(teacher => ({
+    id: teacher.id,
+    userId: teacher.userId,
+    nom: teacher.nom,
+    prenom: teacher.prenom,
+    email: teacher.email,
+    telephone: typeof teacher.telephone === 'string' ? teacher.telephone : undefined,
+    specialite: typeof teacher.specialite === 'string' ? teacher.specialite : undefined,
+    statut: teacher.statut,
+    createdAt: typeof teacher.createdAt === 'string' ? teacher.createdAt : timestamp,
+  }));
+  const restoredYears: DbAcademicYear[] | undefined = backup.academicYears?.map(year => ({
+    id: year.id,
+    label: year.label,
+    startDate: year.startDate,
+    endDate: year.endDate,
+    status: year.status,
+    createdAt: year.createdAt,
+  }));
+  const restoredProfile = backup.schoolProfile ? validateSchoolProfile(backup.schoolProfile) : current.schoolProfile;
   const restored = {
     ...current,
-    users: backupData.users,
-    students: backupData.students,
-    grades: backupData.grades,
-    classes: backupData.classes,
-    subjects: backupData.subjects,
-    teachers: Array.isArray(backupData.teachers) ? backupData.teachers : current.teachers
+    academicYears: restoredYears || current.academicYears,
+    students: restoredStudents,
+    grades: restoredGrades,
+    classes: restoredClasses,
+    subjects: restoredSubjects,
+    teachers: backup.teachers.length > 0 ? restoredTeachers : current.teachers,
+    schoolProfile: restoredProfile,
+    establishmentName: restoredProfile.schoolName,
+    establishmentCity: restoredProfile.city,
   };
 
   try {
+    db.createPreRestoreBackup();
     Object.assign(current, restored);
     db.persist();
   } catch (error) {
@@ -968,13 +1317,23 @@ apiRouter.post('/backup/restore', authMiddleware, requireRoles(['ADMIN']), (req:
   }
   db.logAudit(
     'BACKUP_RESTORE',
-    `Restauration complète: avant users=${before.users}, élèves=${before.students}, notes=${before.grades}; après users=${restored.users.length}, élèves=${restored.students.length}, notes=${restored.grades.length}`,
+    `Restauration complète: avant élèves=${before.students}, notes=${before.grades}; après élèves=${restored.students.length}, notes=${restored.grades.length}`,
     req.user?.id,
     req.user?.email,
     req.ip
   );
 
-  res.json({ success: true, message: 'Base de données restaurée avec succès.' });
+  res.json({
+    success: true,
+    message: 'Base de données restaurée avec succès.',
+    counts: {
+      students: restored.students.length,
+      grades: restored.grades.length,
+      classes: restored.classes.length,
+      subjects: restored.subjects.length,
+      academicYears: restored.academicYears.length,
+    },
+  });
 });
 
 // Journal d'audit

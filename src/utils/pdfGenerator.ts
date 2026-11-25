@@ -37,7 +37,8 @@ export function renderStudentBulletinPage(
   trimester: string,
   classTotalStudents: number,
   lang: Language = 'fr',
-  schoolProfile: SchoolProfile = DEFAULT_SCHOOL_PROFILE
+  schoolProfile: SchoolProfile = DEFAULT_SCHOOL_PROFILE,
+  academicYearLabel = ''
 ) {
   const pageWidth = doc.internal.pageSize.getWidth();
 
@@ -83,9 +84,14 @@ export function renderStudentBulletinPage(
   doc.text(schoolProfile.address || schoolProfile.city, pageWidth - 14, 18, { align: 'right', maxWidth: 90 });
   const contactLine = [schoolProfile.phone, schoolProfile.email].filter(Boolean).join(' • ');
   if (contactLine) doc.text(contactLine, pageWidth - 14, 22, { align: 'right', maxWidth: 90 });
-  doc.text(isEn ? 'Academic Year: 2025 - 2026' : 'Année Scolaire : 2025 - 2026', pageWidth - 14, 26, {
-    align: 'right', maxWidth: 90,
-  });
+  if (academicYearLabel) {
+    doc.text(
+      `${isEn ? 'Academic Year' : 'Année Scolaire'} : ${academicYearLabel}`,
+      pageWidth - 14,
+      26,
+      { align: 'right', maxWidth: 90 }
+    );
+  }
   addSchoolLogo(doc, schoolProfile, pageWidth / 2 - 7, 9, 14);
 
   // Divider Line
@@ -140,17 +146,19 @@ export function renderStudentBulletinPage(
   const subjectRows = res.subjectResults.map((sr) => [
     `${sr.subjectName} (${sr.specialty})`,
     sr.coeff.toString(),
-    sr.evalAvg.toFixed(2),
-    sr.devAvg.toFixed(2),
-    sr.subjectAvg.toFixed(2),
-    sr.points.toFixed(2),
-    `${sr.rank}e / ${sr.rankedStudentCount}`,
+    sr.evalAvg === null ? '—' : sr.evalAvg.toFixed(2),
+    sr.dev1 === null ? '—' : sr.dev1.toFixed(2),
+    sr.dev2 === null ? '—' : sr.dev2.toFixed(2),
+    sr.composition === null ? '—' : sr.composition.toFixed(2),
+    sr.subjectAvg === null ? '—' : sr.subjectAvg.toFixed(2),
+    sr.points === null ? '—' : sr.points.toFixed(2),
+    sr.rank === null ? '—' : `${sr.rank}e / ${sr.rankedStudentCount}`,
     sr.appreciation,
   ]);
 
   const headers = isEn
-    ? [['Subjects & Specialties', 'Coeff', 'Evals', 'HW', 'Avg/20', 'Points', 'Subject Rank', 'Appreciation']]
-    : [['Matières & Spécialités', 'Coeff', 'Éval.', 'Devoirs', 'Moy./20', 'Points', 'Rang Matière', 'Appréciation']];
+    ? [['Subjects & Specialties', 'Coeff', 'Evals', 'HW 1', 'HW 2', 'Composition', 'Avg/20', 'Points', 'Rank', 'Appreciation']]
+    : [['Matières & Spécialités', 'Coeff', 'Éval.', 'D1', 'D2', 'Composition', 'Moy./20', 'Points', 'Rang', 'Appréciation']];
 
   autoTable(doc, {
     startY: 67,
@@ -169,14 +177,16 @@ export function renderStudentBulletinPage(
       cellPadding: 2,
     },
     columnStyles: {
-      0: { cellWidth: 48 },
-      1: { halign: 'center', cellWidth: 14 },
-      2: { halign: 'center', cellWidth: 16 },
-      3: { halign: 'center', cellWidth: 16 },
-      4: { halign: 'center', fontStyle: 'bold', cellWidth: 18 },
-      5: { halign: 'center', cellWidth: 18 },
-      6: { halign: 'center', fontStyle: 'bold', cellWidth: 26 },
-      7: { cellWidth: 26 },
+      0: { cellWidth: 38 },
+      1: { halign: 'center', cellWidth: 9 },
+      2: { halign: 'center', cellWidth: 12 },
+      3: { halign: 'center', cellWidth: 11 },
+      4: { halign: 'center', cellWidth: 11 },
+      5: { halign: 'center', cellWidth: 14 },
+      6: { halign: 'center', fontStyle: 'bold', cellWidth: 14 },
+      7: { halign: 'center', cellWidth: 13 },
+      8: { halign: 'center', cellWidth: 22 },
+      9: { cellWidth: 24 },
     },
     alternateRowStyles: {
       fillColor: [250, 250, 250],
@@ -210,14 +220,14 @@ export function renderStudentBulletinPage(
       specialtyAverage(res.epsAvg),
       specialtyRank(res.epsRank, res.epsStudentCount),
       isEn ? 'TRIMESTER AVERAGE :' : 'MOYENNE TRIMESTRIELLE :',
-      `${res.generalAvg.toFixed(2)} / 20`,
+      res.generalAvg === null ? '—' : `${res.generalAvg.toFixed(2)} / 20`,
     ],
     [
       isEn ? 'Council Official Honors :' : 'Mention Officielle du Conseil :',
-      res.mention.split('(')[0].trim(),
+      res.isProvisional ? `${res.mention.split('(')[0].trim()} · Provisoire` : res.mention.split('(')[0].trim(),
       '',
       isEn ? 'OVERALL CLASS RANK :' : 'RANG GÉNÉRAL :',
-      `${res.generalRank}e ${isEn ? 'out of' : 'sur'} ${classTotalStudents}`,
+      res.generalRank === null ? '—' : `${res.generalRank}e ${isEn ? 'out of' : 'sur'} ${classTotalStudents}`,
     ],
   ];
 
@@ -282,7 +292,8 @@ export function generateStudentBulletinPDF(
   trimester: string,
   classTotalStudents: number,
   lang: Language = 'fr',
-  schoolProfile: SchoolProfile = DEFAULT_SCHOOL_PROFILE
+  schoolProfile: SchoolProfile = DEFAULT_SCHOOL_PROFILE,
+  academicYearLabel = ''
 ) {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -290,7 +301,7 @@ export function generateStudentBulletinPDF(
     format: 'a4',
   });
 
-  renderStudentBulletinPage(doc, res, className, level, trimester, classTotalStudents, lang, schoolProfile);
+  renderStudentBulletinPage(doc, res, className, level, trimester, classTotalStudents, lang, schoolProfile, academicYearLabel);
 
   const fileName = `Bulletin_${res.student.lastName}_${res.student.firstName}_${className.replace(/\s+/g, '_')}_${trimester.replace(/\s+/g, '_')}.pdf`;
   doc.save(fileName);
@@ -306,7 +317,8 @@ export function generateAllClassBulletinsCombinedPDF(
   level: SchoolLevel,
   trimester: string,
   lang: Language = 'fr',
-  schoolProfile: SchoolProfile = DEFAULT_SCHOOL_PROFILE
+  schoolProfile: SchoolProfile = DEFAULT_SCHOOL_PROFILE,
+  academicYearLabel = ''
 ) {
   if (!results || results.length === 0) return;
 
@@ -320,7 +332,7 @@ export function generateAllClassBulletinsCombinedPDF(
     if (index > 0) {
       doc.addPage();
     }
-    renderStudentBulletinPage(doc, res, className, level, trimester, results.length, lang, schoolProfile);
+    renderStudentBulletinPage(doc, res, className, level, trimester, results.length, lang, schoolProfile, academicYearLabel);
   });
 
   const fileName =
@@ -340,7 +352,8 @@ export function generateClassResultsPDF(
   level: SchoolLevel,
   trimester: string,
   lang: Language = 'fr',
-  schoolProfile: SchoolProfile = DEFAULT_SCHOOL_PROFILE
+  schoolProfile: SchoolProfile = DEFAULT_SCHOOL_PROFILE,
+  academicYearLabel = ''
 ) {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -390,12 +403,12 @@ export function generateClassResultsPDF(
   doc.text(schoolProfile.address || schoolProfile.city, pageWidth - 14, 19, { align: 'right', maxWidth: 90 });
   const contactLine = [schoolProfile.phone, schoolProfile.email].filter(Boolean).join(' • ');
   if (contactLine) doc.text(contactLine, pageWidth - 14, 23, { align: 'right', maxWidth: 90 });
-  doc.text(
-    `${level.toUpperCase()} • ${isEn ? 'Academic Year' : 'Année Scolaire'} 2025-2026 • ${isEn ? 'Class' : 'Classe'} : ${className}`,
-    pageWidth - 14,
-    27,
-    { align: 'right', maxWidth: 90 }
-  );
+  const reportContext = [
+    level.toUpperCase(),
+    academicYearLabel ? `${isEn ? 'Academic Year' : 'Année Scolaire'} ${academicYearLabel}` : '',
+    `${isEn ? 'Class' : 'Classe'} : ${className}`,
+  ].filter(Boolean).join(' • ');
+  doc.text(reportContext, pageWidth - 14, 27, { align: 'right', maxWidth: 90 });
   addSchoolLogo(doc, schoolProfile, pageWidth / 2 - 7, 9, 14);
 
   // Divider
@@ -416,13 +429,13 @@ export function generateClassResultsPDF(
 
   // Table Data
   const tableRows = results.map((r) => [
-    `${r.generalRank}e`,
+    r.generalRank === null ? '—' : `${r.generalRank}e`,
     r.student.id,
     `${r.student.lastName.toUpperCase()} ${r.student.firstName}`,
     r.sciencesAvg === null ? '' : `${r.sciencesAvg.toFixed(2)} (${r.sciencesRank}e)`,
     r.literatureAvg === null ? '' : `${r.literatureAvg.toFixed(2)} (${r.literatureRank}e)`,
     r.epsAvg === null ? '' : `${r.epsAvg.toFixed(2)} (${r.epsRank}e)`,
-    `${r.generalAvg.toFixed(2)} / 20`,
+    r.generalAvg === null ? '—' : `${r.generalAvg.toFixed(2)} / 20`,
     r.mention.split('(')[0].trim(),
   ]);
 
@@ -465,12 +478,12 @@ export function generateClassResultsPDF(
 
   // Class Statistics Summary
   if (results.length > 0) {
-    const moys = results.map((r) => r.generalAvg);
-    const classAvg = (moys.reduce((a, b) => a + b, 0) / moys.length).toFixed(2);
-    const highest = Math.max(...moys).toFixed(2);
-    const lowest = Math.min(...moys).toFixed(2);
+    const moys = results.map((r) => r.generalAvg).filter((average): average is number => average !== null);
+    const classAvg = moys.length > 0 ? (moys.reduce((a, b) => a + b, 0) / moys.length).toFixed(2) : '—';
+    const highest = moys.length > 0 ? Math.max(...moys).toFixed(2) : '—';
+    const lowest = moys.length > 0 ? Math.min(...moys).toFixed(2) : '—';
     const passCount = moys.filter((m) => m >= 10).length;
-    const passRate = ((passCount / moys.length) * 100).toFixed(1);
+    const passRate = moys.length > 0 ? ((passCount / moys.length) * 100).toFixed(1) : '0';
 
     doc.setFillColor(241, 245, 249);
     doc.setDrawColor(203, 213, 225);
@@ -481,8 +494,8 @@ export function generateClassResultsPDF(
     doc.setTextColor(...primaryColor);
 
     const statsText = isEn
-      ? `STATISTICS: Enrolled: ${results.length} students | Class Average: ${classAvg}/20 | Highest: ${highest} | Lowest: ${lowest} | Pass (>=10): ${passRate}% (${passCount}/${results.length})`
-      : `STATISTIQUES : Effectif: ${results.length} élèves | Moyenne de Classe: ${classAvg}/20 | Plus Forte: ${highest} | Plus Faible: ${lowest} | Réussite (>=10): ${passRate}% (${passCount}/${results.length})`;
+      ? `STATISTICS: Enrolled: ${moys.length} students | Class Average: ${classAvg}/20 | Highest: ${highest} | Lowest: ${lowest} | Pass (>=10): ${passRate}% (${passCount}/${moys.length})`
+      : `STATISTIQUES : Effectif: ${moys.length} élèves | Moyenne de Classe: ${classAvg}/20 | Plus Forte: ${highest} | Plus Faible: ${lowest} | Réussite (>=10): ${passRate}% (${passCount}/${moys.length})`;
 
     doc.text(statsText, pageWidth / 2, finalY + 14.5, { align: 'center' });
   }

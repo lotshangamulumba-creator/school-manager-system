@@ -15,6 +15,7 @@ export function validateSchoolProfile(input: unknown): SchoolProfile | null {
     ['motto', 160, false],
     ['principalName', 120, false],
     ['directorOfStudiesName', 120, false],
+    ['matriculePrefix', 20, true],
   ] as const;
 
   for (const [field, maxLength, required] of textFields) {
@@ -56,6 +57,7 @@ export function validateSchoolProfile(input: unknown): SchoolProfile | null {
     motto: (profile.motto as string).trim(),
     principalName: (profile.principalName as string).trim(),
     directorOfStudiesName: (profile.directorOfStudiesName as string).trim(),
+    matriculePrefix: (profile.matriculePrefix as string).trim(),
     primaryColor: profile.primaryColor as string,
     secondaryColor: profile.secondaryColor as string,
     accentColor: profile.accentColor as string,

@@ -14,15 +14,18 @@ import { getCeminaceMention, CEMINACE_LEVELS } from '../data/ceminaceDefaults';
 export function isValidStudentGrade(grades: Partial<StudentGrades> | undefined): boolean {
   if (!grades) return false;
 
-  const evaluations =
-    grades.evaluations ??
-    (grades.eval1 !== undefined || grades.eval2 !== undefined
-      ? ((grades.eval1 ?? 0) + (grades.eval2 ?? grades.eval1 ?? 0)) / 2
-      : undefined);
+  const legacyEvaluations = [grades.eval1, grades.eval2].filter(
+    (value): value is number => value !== null && value !== undefined
+  );
+  const evaluations = grades.evaluations !== undefined
+    ? grades.evaluations
+    : legacyEvaluations.length > 0
+      ? legacyEvaluations.reduce((sum, value) => sum + value, 0) / legacyEvaluations.length
+      : null;
   const values = [evaluations, grades.dev1, grades.dev2, grades.composition ?? grades.dev3];
-
-  return values.every(
-    (value) => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 20
+  return values.some((value) => value !== null && value !== undefined) && values.every(
+    (value) => value === null || value === undefined ||
+      (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 20)
   );
 }
 
@@ -37,13 +40,14 @@ export function calculateClassAverages(
   if (classStudents.length === 0 || subjects.length === 0) return [];
 
   type SubjectCalculation = {
-    evalAvg: number;
-    dev1: number;
-    dev2: number;
-    devAvg: number;
-    composition: number;
-    subjectAvg: number;
-    points: number;
+    evalAvg: number | null;
+    dev1: number | null;
+    dev2: number | null;
+    devAvg: number | null;
+    composition: number | null;
+    subjectAvg: number | null;
+    points: number | null;
+    isProvisional: boolean;
   };
   const studentSubjectMap: Record<string, Record<string, SubjectCalculation>> = {};
 
@@ -55,24 +59,35 @@ export function calculateClassAverages(
         (trimester === '1er Trimestre' ? gradesMap[`${student.id}_${sub.name}`] : undefined);
       if (!g || !isValidStudentGrade(g)) return;
 
-      const evalAvg =
-        g.evaluations !== undefined
-          ? g.evaluations
-          : Number((((g.eval1 ?? 0) + (g.eval2 ?? 0)) / 2).toFixed(2));
+      const legacyEvaluations = [g.eval1, g.eval2].filter(
+        (value): value is number => value !== null && value !== undefined
+      );
+      const evalAvg: number | null = g.evaluations !== undefined
+        ? g.evaluations
+        : legacyEvaluations.length > 0
+          ? Number((legacyEvaluations.reduce((sum, value) => sum + value, 0) / legacyEvaluations.length).toFixed(2))
+          : null;
 
-      const d1 = g.dev1 !== undefined ? g.dev1 : 0;
-      const d2 = g.dev2 !== undefined ? g.dev2 : 0;
-      const devAvg = Number(((d1 + d2) / 2).toFixed(2));
+      const d1 = g.dev1 ?? null;
+      const d2 = g.dev2 ?? null;
+      const devValues = [d1, d2].filter((value): value is number => value !== null);
+      const devAvg = devValues.length > 0
+        ? Number((devValues.reduce((sum, value) => sum + value, 0) / devValues.length).toFixed(2))
+        : null;
 
-      const comp =
-        g.composition !== undefined ? g.composition : g.dev3 !== undefined ? g.dev3 : 0;
+      const comp = g.composition ?? g.dev3 ?? null;
 
       // Formule officielle (Congo Brazzaville) :
       // - Contrôle Continu (CC) = (Note Évaluations + Devoir 1 + Devoir 2) / 3
       // - Moyenne Trimestrielle = (CC + 2 * COMPOSITION) / 3
-      const cc = (evalAvg + d1 + d2) / 3;
-      const subjectAvg = Number(((cc + 2 * comp) / 3).toFixed(2));
-      const points = Number((subjectAvg * sub.coeff).toFixed(2));
+      const ccValues = [evalAvg, d1, d2].filter((value): value is number => value !== null);
+      const cc = ccValues.length > 0
+        ? ccValues.reduce((sum, value) => sum + value, 0) / ccValues.length
+        : null;
+      const subjectAvg = comp === null || cc === null
+        ? null
+        : Number(((cc + 2 * comp) / 3).toFixed(2));
+      const points = subjectAvg === null ? null : Number((subjectAvg * sub.coeff).toFixed(2));
 
       studentSubjectMap[student.id][sub.name] = {
         evalAvg,
@@ -82,6 +97,7 @@ export function calculateClassAverages(
         composition: comp,
         subjectAvg,
         points,
+        isProvisional: [evalAvg, d1, d2, comp].some((value) => value === null),
       };
     });
   });
@@ -89,11 +105,14 @@ export function calculateClassAverages(
   const subjectRanks: Record<string, Record<string, number>> = {};
   const subjectCohorts: Record<string, number> = {};
   subjects.forEach((sub) => {
-    const gradedStudents = classStudents.filter((student) => studentSubjectMap[student.id]?.[sub.name]);
+    const gradedStudents = classStudents.filter(
+      (student) => studentSubjectMap[student.id]?.[sub.name]?.subjectAvg !== null &&
+        studentSubjectMap[student.id]?.[sub.name] !== undefined
+    );
     const sorted = gradedStudents.sort((a, b) => {
       const avgA = studentSubjectMap[a.id][sub.name].subjectAvg;
       const avgB = studentSubjectMap[b.id][sub.name].subjectAvg;
-      return avgB - avgA;
+      return (avgB ?? 0) - (avgA ?? 0);
     });
 
     subjectRanks[sub.name] = {};
@@ -108,7 +127,7 @@ export function calculateClassAverages(
     subjectResults: SubjectResult[];
     totalPoints: number;
     totalCoeff: number;
-    generalAvg: number;
+    generalAvg: number | null;
     sciencesAvg: number | null;
     literatureAvg: number | null;
     epsAvg: number | null;
@@ -129,22 +148,25 @@ export function calculateClassAverages(
       const calc = studentSubjectMap[student.id][sub.name];
       if (!calc) return [];
 
-      totalPoints += calc.points;
-      totalCoeff += sub.coeff;
+      if (calc.points !== null) {
+        totalPoints += calc.points;
+        totalCoeff += sub.coeff;
 
-      if (sub.specialty === 'Sciences') {
-        sciPoints += calc.points;
-        sciCoeff += sub.coeff;
-      } else if (sub.specialty === 'Littérature') {
-        litPoints += calc.points;
-        litCoeff += sub.coeff;
-      } else if (sub.specialty === 'EPS') {
-        epsPoints += calc.points;
-        epsCoeff += sub.coeff;
+        if (sub.specialty === 'Sciences') {
+          sciPoints += calc.points;
+          sciCoeff += sub.coeff;
+        } else if (sub.specialty === 'Littérature') {
+          litPoints += calc.points;
+          litCoeff += sub.coeff;
+        } else if (sub.specialty === 'EPS') {
+          epsPoints += calc.points;
+          epsCoeff += sub.coeff;
+        }
       }
 
       let appreciation = 'Passable';
-      if (calc.subjectAvg >= 16) appreciation = 'Très Bien';
+      if (calc.subjectAvg === null) appreciation = 'Provisoire';
+      else if (calc.subjectAvg >= 16) appreciation = 'Très Bien';
       else if (calc.subjectAvg >= 14) appreciation = 'Bien';
       else if (calc.subjectAvg >= 12) appreciation = 'Assez Bien';
       else if (calc.subjectAvg >= 10) appreciation = 'Passable';
@@ -162,15 +184,16 @@ export function calculateClassAverages(
         composition: calc.composition,
         subjectAvg: calc.subjectAvg,
         points: calc.points,
-        rank: subjectRanks[sub.name][student.id],
+        rank: subjectRanks[sub.name][student.id] ?? null,
         rankedStudentCount: subjectCohorts[sub.name],
         appreciation,
+        isProvisional: calc.isProvisional,
       };
     });
 
     if (subjectResults.length === 0) return [];
 
-    const generalAvg = totalCoeff > 0 ? Number((totalPoints / totalCoeff).toFixed(2)) : 0;
+    const generalAvg = totalCoeff > 0 ? Number((totalPoints / totalCoeff).toFixed(2)) : null;
     const sciencesAvg = sciCoeff > 0 ? Number((sciPoints / sciCoeff).toFixed(2)) : null;
     const literatureAvg = litCoeff > 0 ? Number((litPoints / litCoeff).toFixed(2)) : null;
     const epsAvg = epsCoeff > 0 ? Number((epsPoints / epsCoeff).toFixed(2)) : null;
@@ -201,10 +224,15 @@ export function calculateClassAverages(
   const litRanks = specialtyRanks((item) => item.literatureAvg);
   const epsRanks = specialtyRanks((item) => item.epsAvg);
 
-  const sortedGeneral = [...interimResults].sort((a, b) => b.generalAvg - a.generalAvg);
+  const sortedGeneral = [...interimResults].sort((a, b) => {
+    if (a.generalAvg === null) return b.generalAvg === null ? 0 : 1;
+    if (b.generalAvg === null) return -1;
+    return b.generalAvg - a.generalAvg;
+  });
   const genRanks: Record<string, number> = {};
-  sortedGeneral.forEach((item, idx) => {
-    genRanks[item.student.id] = idx + 1;
+  let rank = 0;
+  sortedGeneral.forEach((item) => {
+    if (item.generalAvg !== null) genRanks[item.student.id] = ++rank;
   });
 
   // Build final result array sorted by general rank
@@ -216,7 +244,8 @@ export function calculateClassAverages(
       totalPoints: item.totalPoints,
       totalCoeff: item.totalCoeff,
       generalAvg: item.generalAvg,
-      generalRank: genRanks[sId],
+      generalRank: genRanks[sId] ?? null,
+      isProvisional: item.subjectResults.some((subject) => subject.isProvisional),
       sciencesAvg: item.sciencesAvg,
       sciencesRank: sciRanks[sId] ?? null,
       sciencesStudentCount: Object.keys(sciRanks).length,
@@ -226,7 +255,7 @@ export function calculateClassAverages(
       epsAvg: item.epsAvg,
       epsRank: epsRanks[sId] ?? null,
       epsStudentCount: Object.keys(epsRanks).length,
-      mention: getCeminaceMention(item.generalAvg),
+      mention: item.generalAvg === null ? 'Provisoire' : getCeminaceMention(item.generalAvg),
     };
   });
 }
@@ -249,7 +278,8 @@ export function calculateEstablishmentSpecialtySummary(
     const lvlSubjects = lvl === currentLevel ? currentSubjects : levelConf.defaultSubjects;
 
     const classStats: ClassSpecialtyStat[] = levelConf.classes.map((cls) => {
-      const results = calculateClassAverages(allStudents, lvlSubjects, gradesMap, cls, trimester);
+      const results = calculateClassAverages(allStudents, lvlSubjects, gradesMap, cls, trimester)
+        .filter((result) => result.generalAvg !== null);
       const count = results.length;
       const average = (select: (result: StudentTrimesterResult) => number | null) => {
         const values = results.map(select).filter((value): value is number => value !== null);

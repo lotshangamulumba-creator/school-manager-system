@@ -13,7 +13,7 @@ export interface UserProfile {
 }
 
 export type LicensePlan = 'monthly' | 'annual';
-export type LicenseState = 'active' | 'missing' | 'invalid' | 'not_started' | 'expired' | 'unconfigured';
+export type LicenseState = 'active' | 'grace' | 'missing' | 'invalid' | 'not_started' | 'expired' | 'unconfigured';
 
 export interface SignedSchoolLicense {
   payload: {
@@ -43,6 +43,7 @@ export interface LicenseRenewal {
 
 export interface LicenseStatusResponse {
   state: LicenseState;
+  daysRemaining: number;
   schoolId: string;
   schoolName: string;
   license: SignedSchoolLicense['payload'] | null;
@@ -60,6 +61,7 @@ export interface ApiStudent {
   parentPhone?: string;
   classId: string;
   className: string;
+  academicYearId: string;
   statut: boolean;
 }
 
@@ -103,12 +105,22 @@ export interface ApiGrade {
   classId: string;
   className: string;
   teacherId?: string;
+  academicYearId: string;
   term: '1er Trimestre' | '2ème Trimestre' | '3ème Trimestre';
-  evaluations: number;
-  dev1: number;
-  dev2: number;
-  composition: number;
+  evaluations: number | null;
+  dev1: number | null;
+  dev2: number | null;
+  composition: number | null;
   observation?: string;
+}
+
+export interface ApiAcademicYear {
+  id: string;
+  label: string;
+  startDate: string;
+  endDate: string;
+  status: 'draft' | 'active' | 'closed';
+  createdAt: string;
 }
 
 class ApiService {
@@ -245,7 +257,14 @@ class ApiService {
     });
   }
 
-  async batchImportStudents(students: any[], targetClassId: string, targetClassName: string): Promise<{ importedCount: number; total: number }> {
+  async batchImportStudents(students: Array<Partial<ApiStudent> & {
+    firstName?: string;
+    lastName?: string;
+    dob?: string;
+    gender?: 'M' | 'F';
+    parentPhone?: string;
+    className?: string;
+  }>, targetClassId: string, targetClassName: string): Promise<{ importedCount: number; total: number }> {
     return this.request<{ importedCount: number; total: number }>('/students/batch-import', {
       method: 'POST',
       body: JSON.stringify({ students, targetClassId, targetClassName }),
@@ -311,7 +330,16 @@ class ApiService {
     return this.request<ApiGrade[]>(`/grades${qs ? `?${qs}` : ''}`);
   }
 
-  async saveBatchGrades(payload: { grades: any[]; classId: string; className: string; term: string }): Promise<{ success: boolean; updatedCount: number }> {
+  async saveBatchGrades(payload: { grades: Array<{
+    studentId: string;
+    subjectId: string;
+    subjectName?: string;
+    evaluations: number | null;
+    dev1: number | null;
+    dev2: number | null;
+    composition: number | null;
+    observation?: string;
+  }>; classId: string; className: string; term: string }): Promise<{ success: boolean; updatedCount: number }> {
     return this.request<{ success: boolean; updatedCount: number }>('/grades/batch', {
       method: 'POST',
       body: JSON.stringify(payload),
@@ -324,6 +352,38 @@ class ApiService {
 
   async getDashboardStats(term: string): Promise<any> {
     return this.request<any>(`/stats/dashboard?term=${encodeURIComponent(term)}`);
+  }
+
+  async getAcademicYears(): Promise<ApiAcademicYear[]> {
+    return this.request<ApiAcademicYear[]>('/academic-years');
+  }
+
+  async createAcademicYear(year: Pick<ApiAcademicYear, 'label' | 'startDate' | 'endDate'>): Promise<ApiAcademicYear> {
+    return this.request<ApiAcademicYear>('/academic-years', {
+      method: 'POST',
+      body: JSON.stringify(year),
+    });
+  }
+
+  async updateAcademicYear(id: string, year: Pick<ApiAcademicYear, 'label' | 'startDate' | 'endDate'>): Promise<ApiAcademicYear> {
+    return this.request<ApiAcademicYear>(`/academic-years/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(year),
+    });
+  }
+
+  async deleteAcademicYear(id: string): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>(`/academic-years/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async activateAcademicYear(id: string): Promise<ApiAcademicYear> {
+    return this.request<ApiAcademicYear>(`/academic-years/${encodeURIComponent(id)}/activate`, { method: 'POST' });
+  }
+
+  async closeAcademicYear(id: string): Promise<ApiAcademicYear> {
+    return this.request<ApiAcademicYear>(`/academic-years/${encodeURIComponent(id)}/close`, { method: 'POST' });
   }
 
   // --- Backup & Audit ---

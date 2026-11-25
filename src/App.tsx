@@ -36,10 +36,12 @@ import { TeacherManagementModal } from './components/TeacherManagementModal';
 import { ClassSubjectModal } from './components/ClassSubjectModal';
 import { AuditBackupModal } from './components/AuditBackupModal';
 import { SchoolSettingsModal } from './components/SchoolSettingsModal';
+import { AcademicYearManagementView } from './components/AcademicYearManagementView';
 import {
   api,
   ApiSubject,
   ApiGrade,
+  ApiAcademicYear,
   LicenseState,
   LicenseStatusResponse,
   SignedSchoolLicense,
@@ -48,6 +50,7 @@ import {
 import { LicenseManagementView } from './components/LicenseManagementView';
 import { DEFAULT_SCHOOL_PROFILE } from './data/schoolProfile';
 import { contrastingTextHex } from './utils/colors';
+import { computeCeminaceGrades } from './utils/gradeCalculations';
 import {
   Users,
   GraduationCap,
@@ -74,6 +77,7 @@ import {
   School,
   KeyRound,
   Settings2,
+  CalendarDays,
 } from 'lucide-react';
 
 function mapApiGradesToState(apiGrades: ApiGrade[]): Record<string, StudentGrades> {
@@ -145,6 +149,8 @@ export default function App() {
   const [isLicenseChecking, setIsLicenseChecking] = useState(false);
   const [showLicenseManagement, setShowLicenseManagement] = useState(false);
   const [schoolProfile, setSchoolProfile] = useState<SchoolProfile>(DEFAULT_SCHOOL_PROFILE);
+  const [academicYearLabel, setAcademicYearLabel] = useState('');
+  const [academicYears, setAcademicYears] = useState<ApiAcademicYear[]>([]);
 
   // Onglet actif
   const [activeTab, setActiveTab] = useState<
@@ -164,20 +170,24 @@ export default function App() {
   const [isClassSubjectModalOpen, setIsClassSubjectModalOpen] = useState(false);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
   const [isSchoolSettingsOpen, setIsSchoolSettingsOpen] = useState(false);
+  const [isAcademicYearManagementOpen, setIsAcademicYearManagementOpen] = useState(false);
 
   // Synchronisation avec le backend REST API
   const loadBackendData = async () => {
     try {
-      const [backendStudents, backendClasses, backendSubjects, backendGrades, backendSchoolProfile] = await Promise.all([
+      const [backendStudents, backendClasses, backendSubjects, backendGrades, backendSchoolProfile, backendAcademicYears] = await Promise.all([
         api.getStudents(),
         api.getClasses(),
         api.getSubjects(),
         api.getGrades({}),
         api.getSchoolProfile(),
+        api.getAcademicYears(),
       ]);
 
       setGrades(mapApiGradesToState(backendGrades));
       setSchoolProfile(backendSchoolProfile);
+      setAcademicYears(backendAcademicYears);
+      setAcademicYearLabel(backendAcademicYears.find((year) => year.status === 'active')?.label || '');
 
       setStudents(
         backendStudents.map((bs) => ({
@@ -219,6 +229,12 @@ export default function App() {
     } catch (e) {
       console.warn('[MonPilot] Données locales actives:', e);
     }
+  };
+
+  const reloadAcademicYears = async () => {
+    const years = await api.getAcademicYears();
+    setAcademicYears(years);
+    setAcademicYearLabel(years.find((year) => year.status === 'active')?.label || '');
   };
 
   const loadBackendGrades = async () => {
@@ -283,7 +299,7 @@ export default function App() {
             setIsLicenseChecking(true);
             try {
               const status = await refreshLicenseStatus();
-              if (status.state === 'active') await loadBackendData();
+              if (['active', 'grace', 'expired', 'missing'].includes(status.state)) await loadBackendData();
             } catch (error) {
               console.error('[MonPilot] Vérification de licence impossible:', error);
               setLicenseStatus({
@@ -329,20 +345,14 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (licenseStatus?.state !== 'active' || !licenseStatus.license) return;
-    const expiresAt = licenseStatus.license.expiresAt;
-    let timeoutId: number;
-    const checkExpiration = () => {
-      const delay = Date.parse(expiresAt) - Date.now();
-      if (delay > 0) {
-        timeoutId = window.setTimeout(checkExpiration, Math.min(delay, 2_147_483_647));
-      } else {
-        setLicenseStatus((current) => current?.license?.expiresAt === expiresAt
-          ? { ...current, state: 'expired' }
-          : current);
-      }
-    };
-    timeoutId = window.setTimeout(checkExpiration, Math.max(0, Date.parse(expiresAt) - Date.now()));
+    if (!licenseStatus?.license || !['active', 'grace'].includes(licenseStatus.state)) return;
+    const expiresAt = Date.parse(licenseStatus.license.expiresAt);
+    const nextTransition = licenseStatus.state === 'active'
+      ? expiresAt
+      : expiresAt + 14 * 24 * 60 * 60 * 1000;
+    const timeoutId = window.setTimeout(() => {
+      refreshLicenseStatus().catch((error) => console.error('[MonPilot] Actualisation de la licence impossible:', error));
+    }, Math.max(0, Math.min(nextTransition - Date.now(), 2_147_483_647)));
     return () => window.clearTimeout(timeoutId);
   }, [licenseStatus]);
 
@@ -524,10 +534,10 @@ export default function App() {
           studentId: gradeEditModalData.student.id,
           subjectId: subject.id,
           subjectName: gradeEditModalData.subjectName,
-          evaluations: updatedGrades.evaluations ?? updatedGrades.eval1 ?? 0,
-          dev1: updatedGrades.dev1 ?? 0,
-          dev2: updatedGrades.dev2 ?? 0,
-          composition: updatedGrades.composition ?? 0,
+          evaluations: updatedGrades.evaluations ?? updatedGrades.eval1 ?? null,
+          dev1: updatedGrades.dev1 ?? null,
+          dev2: updatedGrades.dev2 ?? null,
+          composition: updatedGrades.composition ?? null,
           observation: updatedGrades.observation,
         },
       ],
@@ -546,7 +556,16 @@ export default function App() {
   // Sauvegarde en lot des notes pour toute la classe
   const handleSaveBatchGrades = async (batchUpdates: Record<string, StudentGrades>): Promise<void> => {
     // Transformer le lot pour l'API REST
-    const gradeList: any[] = [];
+    const gradeList: Array<{
+      studentId: string;
+      subjectId: string;
+      subjectName: string;
+      evaluations: number | null;
+      dev1: number | null;
+      dev2: number | null;
+      composition: number | null;
+      observation?: string;
+    }> = [];
     const classId = classIds[currentClass];
     if (!classId) {
       throw new Error('Impossible d’enregistrer les notes : classe introuvable.');
@@ -561,10 +580,10 @@ export default function App() {
             studentId: student.id,
             subjectId: subj.id,
             subjectName: subj.name,
-            evaluations: g.evaluations ?? g.eval1 ?? 0,
-            dev1: g.dev1 ?? 0,
-            dev2: g.dev2 ?? 0,
-            composition: g.composition ?? 0,
+            evaluations: g.evaluations ?? g.eval1 ?? null,
+            dev1: g.dev1 ?? null,
+            dev2: g.dev2 ?? null,
+            composition: g.composition ?? null,
             observation: g.observation,
           });
         }
@@ -606,7 +625,7 @@ export default function App() {
           setIsLicenseChecking(true);
           try {
             const status = await refreshLicenseStatus();
-            if (status.state === 'active') await loadBackendData();
+            if (['active', 'grace', 'expired', 'missing'].includes(status.state)) await loadBackendData();
           } catch (error) {
             console.error('[MonPilot] Vérification de licence impossible:', error);
             setLicenseStatus({
@@ -633,7 +652,9 @@ export default function App() {
     );
   }
 
-  if (licenseStatus.state !== 'active') {
+  const licenseAllowsReadOnly = licenseStatus.state === 'expired' || licenseStatus.state === 'missing';
+  const licenseAllowsERP = ['active', 'grace', 'expired', 'missing'].includes(licenseStatus.state);
+  if (!licenseAllowsERP) {
     return (
       <LicenseManagementView
         status={licenseStatus}
@@ -704,7 +725,18 @@ export default function App() {
             {currentUser?.role === 'ADMIN' && (
               <div className="flex items-center gap-1">
                 <button
+                  onClick={() => setIsAcademicYearManagementOpen(true)}
+                  disabled={licenseAllowsReadOnly}
+                  className="flex items-center gap-1 text-[11px] font-bold text-sky-200 bg-[#152942] hover:bg-[#203c61] disabled:cursor-not-allowed disabled:opacity-50 px-2 py-1 rounded border border-[#234574] transition-colors cursor-pointer"
+                  title="Gérer les années scolaires"
+                >
+                  <CalendarDays className="w-3.5 h-3.5 text-sky-300" />
+                  <span className="hidden sm:inline">Années</span>
+                </button>
+
+                <button
                   onClick={() => setIsSchoolSettingsOpen(true)}
+                  disabled={licenseAllowsReadOnly}
                   className="flex items-center gap-1 text-[11px] font-bold text-sky-200 bg-[#152942] hover:bg-[#203c61] px-2 py-1 rounded border border-[#234574] transition-colors cursor-pointer"
                   title="Personnaliser l’identité et les bulletins de l’école"
                 >
@@ -774,11 +806,29 @@ export default function App() {
             </button>
 
             <div className="text-[11px] text-sky-200 bg-[#152942] px-2 py-1 rounded border border-[#234574]">
-              {trimester}
+              {academicYearLabel ? `${academicYearLabel} · ${trimester}` : trimester}
             </div>
             <div className="text-[11px] font-mono text-slate-300">v2.0-Web</div>
           </div>
         </div>
+
+        {licenseStatus.state === 'grace' && (
+          <div role="status" className="relative z-10 border-b border-amber-300 bg-amber-50 px-4 py-2 text-xs font-medium text-amber-900">
+            Licence expirée : période de grâce active ({licenseStatus.daysRemaining} jours restants). Renouvelez-la pour éviter le passage en lecture seule.
+          </div>
+        )}
+        {licenseAllowsReadOnly && (
+          <div role="alert" className="relative z-10 border-b border-rose-300 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-900">
+            {licenseStatus.state === 'expired'
+              ? 'Licence expirée : l’application est en lecture seule. Les consultations et exports restent disponibles.'
+              : 'Licence absente : l’application est en lecture seule. Les consultations et exports restent disponibles.'}
+            {currentUser.role === 'ADMIN' && (
+              <button type="button" onClick={() => setShowLicenseManagement(true)} className="ml-2 underline underline-offset-2 hover:no-underline">
+                Gérer la licence
+              </button>
+            )}
+          </div>
+        )}
 
         {/* 2. Barre d'outils académique & sélection du niveau / classe */}
         <div className="relative z-10 bg-slate-100 border-b border-slate-200 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
@@ -790,6 +840,7 @@ export default function App() {
                 <button
                   key={lvl}
                   onClick={() => handleLevelChange(lvl)}
+                  disabled={licenseAllowsReadOnly}
                   className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${
                     level === lvl
                       ? 'bg-[#1E3A5F] text-white shadow-xs'
@@ -807,6 +858,7 @@ export default function App() {
               <select
                 value={currentClass}
                 onChange={(e) => setCurrentClass(e.target.value)}
+                disabled={licenseAllowsReadOnly}
                 className="font-bold text-slate-800 bg-transparent outline-none cursor-pointer pr-2"
               >
                 {classes.map((c) => (
@@ -842,6 +894,7 @@ export default function App() {
             <select
               value={trimester}
               onChange={(e) => setTrimester(e.target.value)}
+              disabled={licenseAllowsReadOnly}
               className="bg-white border border-slate-300 font-bold text-xs px-2 py-1.5 rounded-lg outline-none cursor-pointer shadow-2xs text-[#1E3A5F]"
             >
               <option value="1er Trimestre">{t.firstTrimester}</option>
@@ -1138,12 +1191,11 @@ export default function App() {
                         const g =
                           grades[keyWithTrim] ||
                           (trimester === '1er Trimestre' ? grades[keyDefault] : undefined);
-                        const evalNotes = g?.evaluations ?? g?.eval1 ?? 0;
-                        const dev1 = g?.dev1 ?? 0;
-                        const dev2 = g?.dev2 ?? 0;
-                        const comp = g?.composition ?? g?.dev3 ?? 0;
-                        const cc = (evalNotes + dev1 + dev2) / 3;
-                        const subjectAvg = (cc + 2 * comp) / 3;
+                        const evalNotes = g?.evaluations ?? g?.eval1 ?? null;
+                        const dev1 = g?.dev1 ?? null;
+                        const dev2 = g?.dev2 ?? null;
+                        const comp = g?.composition ?? g?.dev3 ?? null;
+                        const { subjectAvg, isProvisional } = computeCeminaceGrades(evalNotes, dev1, dev2, comp);
 
                         return (
                           <tr key={student.id} className="hover:bg-slate-50 transition-colors">
@@ -1152,19 +1204,19 @@ export default function App() {
                               {student.lastName.toUpperCase()} {student.firstName}
                             </td>
                             <td className="py-2 px-2.5 text-center font-mono font-medium text-slate-800 bg-slate-50/50">
-                              {g ? evalNotes.toFixed(2) : '—'}
+                              {evalNotes === null ? '—' : evalNotes.toFixed(2)}
                             </td>
                             <td className="py-2 px-2.5 text-center font-mono font-medium text-slate-800">
-                              {g ? dev1.toFixed(2) : '—'}
+                              {dev1 === null ? '—' : dev1.toFixed(2)}
                             </td>
                             <td className="py-2 px-2.5 text-center font-mono font-medium text-slate-800">
-                              {g ? dev2.toFixed(2) : '—'}
+                              {dev2 === null ? '—' : dev2.toFixed(2)}
                             </td>
                             <td className="py-2 px-2.5 text-center font-mono font-bold text-amber-900 bg-amber-50/60">
-                              {g ? comp.toFixed(2) : '—'}
+                              {comp === null ? '—' : comp.toFixed(2)}
                             </td>
                             <td className="py-2 px-3 text-center font-bold text-[#1E3A5F] bg-sky-50/50">
-                              {g ? (
+                              {subjectAvg !== null ? (
                                 <span
                                   className={`inline-block px-2 py-0.5 rounded ${
                                     subjectAvg >= 10 ? 'text-sky-950 font-black' : 'text-rose-700 font-bold'
@@ -1173,6 +1225,7 @@ export default function App() {
                                   {subjectAvg.toFixed(2)}
                                 </span>
                               ) : '—'}
+                              {isProvisional && <span className="ml-1 text-[9px] font-semibold text-amber-800">Provisoire</span>}
                             </td>
                             <td className="py-2 px-3 text-right">
                               <MidnightButton
@@ -1276,7 +1329,7 @@ export default function App() {
                               <Sparkles className="w-3.5 h-3.5" /> 1er
                             </span>
                           ) : (
-                            `${res.generalRank}e`
+                            res.generalRank === null ? '—' : `${res.generalRank}e`
                           )}
                         </td>
                         <td className="py-2.5 px-3 font-mono text-slate-700">{res.student.id}</td>
@@ -1296,7 +1349,8 @@ export default function App() {
                           {res.epsRank !== null && <span className="text-[10px] text-slate-500 ml-1">({res.epsRank}e)</span>}
                         </td>
                         <td className="py-2.5 px-3 text-center font-extrabold text-sm text-[#1E3A5F] bg-sky-100/50 font-mono">
-                          {res.generalAvg.toFixed(2)} / 20
+                          {res.generalAvg === null ? '—' : `${res.generalAvg.toFixed(2)} / 20`}
+                          {res.isProvisional && <span className="ml-1 text-[9px] font-semibold text-amber-800">Provisoire</span>}
                         </td>
                         <td className="py-2.5 px-3 text-[11px] font-medium text-slate-700">{res.mention}</td>
                       </tr>
@@ -1437,13 +1491,13 @@ export default function App() {
                         {classResults.map((res) => (
                           <tr key={res.student.id} className="hover:bg-slate-50">
                             <td className="py-2 px-3 text-center font-bold text-[#1E3A5F]">
-                              {res.generalRank}e
+                              {res.generalRank === null ? '—' : `${res.generalRank}e`}
                             </td>
                             <td className="py-2 px-3 font-semibold text-slate-900">
                               {res.student.lastName.toUpperCase()} {res.student.firstName}
                             </td>
                             <td className="py-2 px-3 text-center font-mono font-bold text-slate-800">
-                              {res.generalAvg.toFixed(2)}
+                              {res.generalAvg === null ? '—' : res.generalAvg.toFixed(2)}
                             </td>
                             <td className="py-2 px-3 text-slate-600">{res.mention.split('(')[0]}</td>
                             <td className="py-2 px-3 text-right">
@@ -1585,6 +1639,12 @@ export default function App() {
         onClose={() => setIsSchoolSettingsOpen(false)}
         onSave={handleSaveSchoolProfile}
       />
+      {isAcademicYearManagementOpen && (
+        <AcademicYearManagementView
+          onClose={() => setIsAcademicYearManagementOpen(false)}
+          onChanged={reloadAcademicYears}
+        />
+      )}
     </div>
   );
 }

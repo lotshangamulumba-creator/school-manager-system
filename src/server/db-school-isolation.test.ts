@@ -8,6 +8,7 @@ import test from 'node:test';
 function initializeSchoolDatabase(databasePath: string, schoolName?: string) {
   const source = `
     const { db } = await import('./src/server/db.ts');
+    await db.ready;
     if (process.env.TEST_SCHOOL_NAME) {
       db.getData().schoolProfile.schoolName = process.env.TEST_SCHOOL_NAME;
       db.getData().establishmentName = process.env.TEST_SCHOOL_NAME;
@@ -74,6 +75,7 @@ test('legacy databases receive server-backed subjects for levels missing them', 
 
   const source = `
     const { db } = await import('./src/server/db.ts');
+    await db.ready;
     const data = db.getData();
     console.log(JSON.stringify({
       version: data.version,
@@ -101,7 +103,7 @@ test('legacy databases receive server-backed subjects for levels missing them', 
     lycee: Array<{ id: string }>;
     primaire: Array<{ id: string }>;
   };
-  assert.equal(migrated.version, 2);
+  assert.equal(migrated.version, 3);
   assert.ok(migrated.lycee.length > 0);
   assert.ok(migrated.primaire.length > 0);
   assert.ok(migrated.lycee.every((subject) => subject.id !== 'l1'));

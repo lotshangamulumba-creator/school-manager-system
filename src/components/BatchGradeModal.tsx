@@ -212,18 +212,20 @@ export const BatchGradeModal: React.FC<BatchGradeModalProps> = ({
                       comp: '',
                     };
 
-                    const eVal = Math.min(20, Math.max(0, parseFloat(row.evalNote) || 0));
-                    const d1Val = Math.min(20, Math.max(0, parseFloat(row.dev1) || 0));
-                    const d2Val = Math.min(20, Math.max(0, parseFloat(row.dev2) || 0));
-                    const compVal = Math.min(20, Math.max(0, parseFloat(row.comp) || 0));
-
-                    const cc = (eVal + d1Val + d2Val) / 3;
-                    const computedAvg = (cc + 2 * compVal) / 3;
-                    const hasValidGrades = [row.evalNote, row.dev1, row.dev2, row.comp].every((value) => {
-                      if (value.trim() === '') return false;
-                      const numericValue = Number(value);
-                      return Number.isFinite(numericValue) && numericValue >= 0 && numericValue <= 20;
-                    });
+                    const parsedValues = [row.evalNote, row.dev1, row.dev2, row.comp].map((value) =>
+                      value.trim() === '' ? null : Number(value)
+                    );
+                    const hasValidGrades = parsedValues.every((value) =>
+                      value === null || (Number.isFinite(value) && value >= 0 && value <= 20)
+                    );
+                    const [eVal, d1Val, d2Val, compVal] = parsedValues;
+                    const ccNotes = [eVal, d1Val, d2Val].filter((value): value is number => value !== null);
+                    const cc = ccNotes.length > 0
+                      ? ccNotes.reduce((sum, value) => sum + value, 0) / ccNotes.length
+                      : null;
+                    const computedAvg = compVal !== null && cc !== null ? (cc + 2 * compVal) / 3 : null;
+                    const hasAnyGrade = parsedValues.some((value) => value !== null);
+                    const isProvisional = hasAnyGrade && parsedValues.some((value) => value === null);
 
                     return (
                       <tr key={student.id} className="hover:bg-slate-50/80 transition-colors">
@@ -288,7 +290,7 @@ export const BatchGradeModal: React.FC<BatchGradeModalProps> = ({
 
                         {/* Moyenne Calculée */}
                         <td className="py-2 px-2 text-center bg-sky-50/50 font-bold">
-                          {hasValidGrades ? (
+                          {hasValidGrades && computedAvg !== null ? (
                             <span
                               className={`inline-block px-2 py-0.5 rounded text-xs ${
                                 computedAvg >= 14
@@ -299,9 +301,12 @@ export const BatchGradeModal: React.FC<BatchGradeModalProps> = ({
                               }`}
                             >
                               {computedAvg.toFixed(2)}
+                              {isProvisional && <span className="ml-1 text-[9px] font-semibold">Provisoire</span>}
                             </span>
                           ) : (
-                            <span className="text-slate-400">—</span>
+                            <span className="text-slate-400">
+                              {isProvisional ? 'Provisoire · —' : '—'}
+                            </span>
                           )}
                         </td>
                       </tr>

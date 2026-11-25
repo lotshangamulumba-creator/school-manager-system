@@ -1,14 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { db, DbUser } from './db.js';
+export { BCRYPT_COST, validatePassword } from './passwordPolicy.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || (
-  process.env.NODE_ENV === 'production'
-    ? (() => { throw new Error('JWT_SECRET doit être défini en production.'); })()
-    : crypto.randomBytes(32).toString('hex')
-);
+const configuredSecret = process.env.JWT_SECRET;
+if (process.env.NODE_ENV === 'production' && (!configuredSecret || configuredSecret.length < 32)) {
+  throw new Error('JWT_SECRET doit être défini en production et contenir au moins 32 caractères.');
+}
+const JWT_SECRET = configuredSecret || crypto.randomBytes(32).toString('hex');
 const TOKEN_EXPIRY = '24h';
 
 export interface AuthenticatedRequest extends Request {
