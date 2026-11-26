@@ -11,6 +11,7 @@ export interface SchoolProfile {
   motto: string;
   principalName: string;
   directorOfStudiesName: string;
+  matriculePrefix: string;
   primaryColor: string;
   secondaryColor: string;
   accentColor: string;
@@ -45,10 +46,10 @@ export interface Student {
 }
 
 export interface StudentGrades {
-  evaluations: number; // Notes Evaluations (/20)
-  dev1: number;        // Notes Devoir 1 (/20)
-  dev2: number;        // Notes Devoir 2 (/20)
-  composition: number; // Notes COMPOSITION par trimestre (/20)
+  evaluations: number | null; // Notes Evaluations (/20)
+  dev1: number | null;        // Notes Devoir 1 (/20)
+  dev2: number | null;        // Notes Devoir 2 (/20)
+  composition: number | null; // Notes COMPOSITION par trimestre (/20)
   observation?: string;
   // Rétrocompatibilité
   eval1?: number;
@@ -60,16 +61,17 @@ export interface SubjectResult {
   subjectName: string;
   coeff: number;
   specialty: Specialty;
-  evalAvg: number;
-  dev1: number;
-  dev2: number;
-  devAvg: number;
-  composition: number;
-  subjectAvg: number;
-  points: number;
-  rank: number;
+  evalAvg: number | null;
+  dev1: number | null;
+  dev2: number | null;
+  devAvg: number | null;
+  composition: number | null;
+  subjectAvg: number | null;
+  points: number | null;
+  rank: number | null;
   rankedStudentCount: number;
   appreciation: string;
+  isProvisional: boolean;
 }
 
 export interface ClassSpecialtyStat {
@@ -120,8 +122,9 @@ export interface StudentTrimesterResult {
   subjectResults: SubjectResult[];
   totalPoints: number;
   totalCoeff: number;
-  generalAvg: number;
-  generalRank: number;
+  generalAvg: number | null;
+  generalRank: number | null;
+  isProvisional: boolean;
   sciencesAvg: number | null;
   sciencesRank: number | null;
   sciencesStudentCount: number;

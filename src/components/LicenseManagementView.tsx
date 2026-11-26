@@ -14,6 +14,7 @@ interface LicenseManagementViewProps {
 
 const STATE_LABELS: Record<LicenseStatusResponse['state'], string> = {
   active: 'Active',
+  grace: 'Période de grâce',
   missing: 'Aucune licence installée',
   invalid: 'Licence invalide',
   not_started: 'Pas encore active',

@@ -50,21 +50,24 @@ test('requires signed subscription dates to match the selected monthly or annual
   assert.equal(getLicenseStatus(mismatchedPlan, 'school-test-1', 'École de test', publicKeyPem, now).state, 'invalid');
 });
 
-test('blocks missing, expired, and not-yet-active licenses', () => {
+test('reports grace and expired states and blocks not-yet-active licenses', () => {
   assert.equal(getLicenseStatus(null, 'school-test-1', 'École de test', publicKeyPem, now).state, 'missing');
-  assert.equal(
-    getLicenseStatus(
-      createLicense({
-        startsAt: '2025-12-15T12:00:00.000Z',
-        expiresAt: '2026-01-15T12:00:00.000Z',
-      }),
-      'school-test-1',
-      'École de test',
-      publicKeyPem,
-      now
-    ).state,
-    'expired'
+  const expiredLicense = createLicense({
+    startsAt: '2025-12-15T12:00:00.000Z',
+    expiresAt: '2026-01-15T12:00:00.000Z',
+  });
+  const grace = getLicenseStatus(expiredLicense, 'school-test-1', 'École de test', publicKeyPem, now);
+  assert.equal(grace.state, 'grace');
+  assert.equal(grace.daysRemaining, 14);
+  const expired = getLicenseStatus(
+    expiredLicense,
+    'school-test-1',
+    'École de test',
+    publicKeyPem,
+    new Date('2026-01-30T12:00:00.000Z')
   );
+  assert.equal(expired.state, 'expired');
+  assert.equal(expired.daysRemaining, 0);
   const futureLicense = createLicense({ startsAt: '2026-02-01T00:00:00.000Z', expiresAt: '2026-03-01T00:00:00.000Z' });
   assert.equal(getLicenseStatus(futureLicense, 'school-test-1', 'École de test', publicKeyPem, now).state, 'not_started');
   assert.equal(verifyInstallableLicense(futureLicense, 'school-test-1', publicKeyPem, now), true);

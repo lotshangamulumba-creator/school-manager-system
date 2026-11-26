@@ -1,25 +1,54 @@
+import 'dotenv/config';
 import express from 'express';
 import path from 'path';
-import { createServer as createViteServer } from 'vite';
-import { apiRouter } from './src/server/routes.js';
+import cors from 'cors';
+import helmet from 'helmet';
+import { getHelmetOptions } from './src/server/securityHeaders.js';
 
-async function startServer() {
+function getAllowedOrigins(port: number): Set<string> {
+  const configuredOrigins = process.env.ALLOWED_ORIGINS;
+  if (configuredOrigins !== undefined) {
+    return new Set(configuredOrigins.split(',').map(origin => origin.trim()).filter(Boolean));
+  }
+  if (process.env.NODE_ENV === 'production') return new Set();
+  return new Set([`http://localhost:${port}`, `http://127.0.0.1:${port}`]);
+}
+
+export async function startServer() {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const jwtSecret = process.env.JWT_SECRET;
+  if (isProduction && (!jwtSecret || jwtSecret.length < 32)) {
+    throw new Error('JWT_SECRET doit être défini en production et contenir au moins 32 caractères.');
+  }
+
+  const port = Number(process.env.PORT || 3000);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error('PORT doit être un entier compris entre 1 et 65535.');
+  }
+  const host = process.env.HOST || '127.0.0.1';
+  const allowedOrigins = getAllowedOrigins(port);
   const app = express();
-  const PORT = 3000;
 
-  // Middlewares de base
-  app.use(express.json({ limit: '20mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '20mb' }));
-
-  // En-têtes CORS et sécurité de base
+  app.use(helmet(getHelmetOptions(isProduction)));
   app.use((req, res, next) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    // Ne pas restreindre X-Frame-Options pour permettre le rendu dans l'iframe AI Studio
-    next();
+    const origin = req.get('Origin');
+    if (origin && !allowedOrigins.has(origin)) {
+      return res.status(403).json({ error: 'Origine non autorisée.' });
+    }
+    return next();
   });
+  app.use(cors({
+    origin: (origin, callback) => callback(null, origin && allowedOrigins.has(origin) ? origin : false),
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Authorization', 'Content-Type'],
+  }));
 
-  // Health check
-  app.get('/api/health', (req, res) => {
+  app.use('/api/backup/restore', express.json({ limit: '20mb' }));
+  app.use('/api/school-profile', express.json({ limit: '20mb' }));
+  app.use(express.json({ limit: '100kb' }));
+  app.use(express.urlencoded({ extended: true, limit: '100kb' }));
+
+  app.get('/api/health', (_req, res) => {
     res.json({
       status: 'ok',
       platform: 'MonPilot School ERP',
@@ -29,32 +58,33 @@ async function startServer() {
     });
   });
 
-  // Servir les fichiers statiques de public/
   app.use(express.static(path.join(process.cwd(), 'public')));
-
-  // Monter les routes API REST
+  const { db } = await import('./src/server/db.js');
+  await db.ready;
+  const { apiRouter } = await import('./src/server/routes.js');
   app.use('/api', apiRouter);
 
-  // Vite middleware pour développement ou fichiers statiques en production
-  if (process.env.NODE_ENV !== 'production') {
+  if (isProduction) {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (_req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  } else {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[MonPilot Server] Plateforme scolaire opérationnelle sur http://0.0.0.0:${PORT}`);
+  app.listen(port, host, () => {
+    console.log(`[MonPilot Server] Plateforme scolaire opérationnelle sur http://${host}:${port}`);
   });
 }
 
-startServer().catch(err => {
-  console.error('[MonPilot Server] Erreur fatale au démarrage du serveur:', err);
+startServer().catch(error => {
+  console.error('[MonPilot Server] Erreur fatale au démarrage du serveur:', error);
+  process.exitCode = 1;
 });

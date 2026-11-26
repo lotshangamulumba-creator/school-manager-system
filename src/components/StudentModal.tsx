@@ -58,7 +58,7 @@ export const StudentModal: React.FC<StudentModalProps> = ({
     }
 
     const student: Student = {
-      id: studentToEdit ? studentToEdit.id : `CEM-${Date.now().toString().slice(-4)}`,
+      id: studentToEdit ? studentToEdit.id : crypto.randomUUID(),
       firstName: firstName.trim(),
       lastName: lastName.trim(),
       dob: dob.trim(),

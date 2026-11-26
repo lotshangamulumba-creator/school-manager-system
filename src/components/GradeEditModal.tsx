@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Student, StudentGrades } from '../types';
 import { MidnightButton } from './MidnightButton';
 import { X, Calculator, Award, AlertCircle } from 'lucide-react';
+import { parseGradeInput } from '../utils/gradeInput';
 
 interface GradeEditModalProps {
   isOpen: boolean;
@@ -43,34 +44,43 @@ export const GradeEditModal: React.FC<GradeEditModalProps> = ({
 
   if (!isOpen || !student) return null;
 
-  const numEval = Math.min(20, Math.max(0, parseFloat(evaluations) || 0));
-  const numD1 = Math.min(20, Math.max(0, parseFloat(dev1) || 0));
-  const numD2 = Math.min(20, Math.max(0, parseFloat(dev2) || 0));
-  const numComp = Math.min(20, Math.max(0, parseFloat(composition) || 0));
-  const hasValidGrades = [evaluations, dev1, dev2, composition].every((value) => {
-    if (value.trim() === '') return false;
-    const numericValue = Number(value);
-    return Number.isFinite(numericValue) && numericValue >= 0 && numericValue <= 20;
-  });
-
-  // Contrôle Continu (CC) = (Notes Évaluations + Devoir 1 + Devoir 2) / 3
-  const cc = (numEval + numD1 + numD2) / 3;
-  // Formule officielle : Moyenne = (CC + 2 * COMPOSITION) / 3
-  const computedMoyenne = (cc + 2 * numComp) / 3;
+  const parsedValues = [evaluations, dev1, dev2, composition].map((value) =>
+    value.trim() === '' ? null : Number(value)
+  );
+  const hasValidGrades = parsedValues.every((value) =>
+    value === null || (Number.isFinite(value) && value >= 0 && value <= 20)
+  );
+  const [numEval, numD1, numD2, numComp] = parsedValues;
+  const ccNotes = [numEval, numD1, numD2].filter((value): value is number => value !== null);
+  const cc = ccNotes.length > 0
+    ? ccNotes.reduce((sum, value) => sum + value, 0) / ccNotes.length
+    : null;
+  const computedMoyenne = numComp !== null && cc !== null ? (cc + 2 * numComp) / 3 : null;
+  const hasAnyGrade = parsedValues.some((value) => value !== null);
+  const isProvisional = hasAnyGrade && parsedValues.some((value) => value === null);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
     setSaveError(null);
     try {
+      const [savedEval, savedD1, savedD2, savedComp] = [
+        evaluations,
+        dev1,
+        dev2,
+        composition,
+      ].map(parseGradeInput);
+      if ([savedEval, savedD1, savedD2, savedComp].every((value) => value === null)) {
+        throw new Error('Saisissez au moins une note.');
+      }
       await onSave({
-        evaluations: numEval,
-        dev1: numD1,
-        dev2: numD2,
-        composition: numComp,
-        eval1: numEval,
-        eval2: numEval,
-        dev3: numComp,
+        evaluations: savedEval,
+        dev1: savedD1,
+        dev2: savedD2,
+        composition: savedComp,
+        eval1: savedEval ?? undefined,
+        eval2: savedEval ?? undefined,
+        dev3: savedComp ?? undefined,
       });
       onClose();
     } catch (error) {
@@ -130,7 +140,6 @@ export const GradeEditModal: React.FC<GradeEditModalProps> = ({
                 onChange={(e) => setEvaluations(e.target.value)}
                 className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-[#1E3A5F]"
                 placeholder="Ex: 14.5"
-                required
               />
             </div>
 
@@ -149,7 +158,6 @@ export const GradeEditModal: React.FC<GradeEditModalProps> = ({
                   onChange={(e) => setDev1(e.target.value)}
                   className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-[#1E3A5F]"
                   placeholder="Ex: 12"
-                  required
                 />
               </div>
               <div>
@@ -165,7 +173,6 @@ export const GradeEditModal: React.FC<GradeEditModalProps> = ({
                   onChange={(e) => setDev2(e.target.value)}
                   className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-[#1E3A5F]"
                   placeholder="Ex: 13.5"
-                  required
                 />
               </div>
             </div>
@@ -185,7 +192,6 @@ export const GradeEditModal: React.FC<GradeEditModalProps> = ({
                 onChange={(e) => setComposition(e.target.value)}
                 className="w-full px-3 py-2 text-sm font-semibold border border-amber-300 bg-white rounded-lg outline-none focus:ring-2 focus:ring-amber-500 text-amber-950"
                 placeholder="Ex: 15"
-                required
               />
               <span className="text-[10px] text-amber-800 block mt-1">
                 Épreuve de synthèse trimestrielle majeure comptant double dans la moyenne.
@@ -204,17 +210,18 @@ export const GradeEditModal: React.FC<GradeEditModalProps> = ({
           <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 grid grid-cols-3 text-center text-xs gap-1">
             <div>
               <span className="text-slate-500 block text-[11px]">Contrôle Continu</span>
-              <span className="font-bold text-slate-800 text-sm">{hasValidGrades ? cc.toFixed(2) : '—'}</span>
+              <span className="font-bold text-slate-800 text-sm">{hasValidGrades && cc !== null ? cc.toFixed(2) : '—'}</span>
             </div>
             <div>
               <span className="text-amber-700 block text-[11px]">Composition</span>
-              <span className="font-bold text-amber-800 text-sm">{hasValidGrades ? numComp.toFixed(2) : '—'}</span>
+              <span className="font-bold text-amber-800 text-sm">{hasValidGrades && numComp !== null ? numComp.toFixed(2) : '—'}</span>
             </div>
             <div className="border-l border-slate-200 pl-2">
               <span className="text-[#1E3A5F] font-semibold block text-[11px]">Moyenne Finale</span>
               <span className="font-extrabold text-[#1E3A5F] text-base">
-                {hasValidGrades ? `${computedMoyenne.toFixed(2)} / 20` : '—'}
+                {hasValidGrades && computedMoyenne !== null ? `${computedMoyenne.toFixed(2)} / 20` : '—'}
               </span>
+              {isProvisional && <span className="mt-1 block text-[10px] font-semibold text-amber-700">Provisoire</span>}
             </div>
           </div>
 

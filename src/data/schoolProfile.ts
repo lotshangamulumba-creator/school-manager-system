@@ -9,6 +9,7 @@ export const DEFAULT_SCHOOL_PROFILE: SchoolProfile = {
   motto: 'Unité - Travail - Progrès',
   principalName: 'Le Directeur Général',
   directorOfStudiesName: 'Le Directeur des Études',
+  matriculePrefix: 'CEM',
   primaryColor: '#1E3A5F',
   secondaryColor: '#152942',
   accentColor: '#38BDF8',

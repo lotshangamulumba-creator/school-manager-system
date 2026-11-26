@@ -11,9 +11,11 @@ test('backend rankings and dashboard stats omit students without valid term grad
   const databasePath = path.join(directory, 'school.json');
   const source = `
     const { db } = await import('./src/server/db.ts');
+    await db.ready;
     const { computeClassResults, computeEstablishmentStats } = await import('./src/server/academic.ts');
     const data = db.getData();
     const classId = data.classes.find(schoolClass => schoolClass.nom === '6ème A').id;
+    const academicYearId = data.classes.find(schoolClass => schoolClass.id === classId).academicYearId;
     const now = new Date().toISOString();
     const students = [
       { id: 'TEST-EMPTY', nom: 'EMPTY', prenom: 'No', classId, className: '6ème A' },
@@ -23,6 +25,7 @@ test('backend rankings and dashboard stats omit students without valid term grad
     ];
     data.students.push(...students.map(student => ({
       ...student,
+      academicYearId,
       matricule: student.id,
       sexe: 'M',
       dateNaissance: '01/01/2010',
@@ -37,7 +40,7 @@ test('backend rankings and dashboard stats omit students without valid term grad
       subjectName: 'Mathématiques',
       classId,
       className: '6ème A',
-      academicYearId: 'ay-2025-2026',
+      academicYearId,
       term,
       evaluations,
       dev1: value,
@@ -63,7 +66,12 @@ test('backend rankings and dashboard stats omit students without valid term grad
     }));
     const stats = computeEstablishmentStats('1er Trimestre');
     const classStats = stats.classes.find(schoolClass => schoolClass.classId === classId);
-    console.log(JSON.stringify({ results, totalStudents: stats.totalStudents, classStats }));
+    console.log(JSON.stringify({
+      results,
+      totalStudents: stats.totalStudents,
+      classStats,
+      activeSubjectCount: data.subjects.filter(subject => subject.statut).length
+    }));
   `;
   const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', source], {
     cwd: process.cwd(),
@@ -91,13 +99,14 @@ test('backend rankings and dashboard stats omit students without valid term grad
     }>;
     totalStudents: number;
     classStats: { studentCount: number; classAvg: number };
+    activeSubjectCount: number;
   };
   assert.deepEqual(computed.results.map((student) => student.id), ['TEST-GRADED', 'TEST-ZERO']);
   assert.equal(computed.results[0].generalRank, 1);
   assert.equal(computed.results[0].generalAvg, 20);
   assert.equal(computed.results[0].literatureAvg, null);
   assert.equal(computed.results[0].literatureRank, null);
-  assert.equal(computed.results[0].subjectCount, 1);
+  assert.equal(computed.results[0].subjectCount, computed.activeSubjectCount);
   assert.equal(computed.results[1].generalAvg, 0);
   assert.equal(computed.totalStudents, 2);
   assert.equal(computed.classStats.studentCount, 2);

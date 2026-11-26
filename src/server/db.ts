@@ -1,9 +1,10 @@
 import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
-import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 import { SignedSchoolLicense } from './licensing.js';
+import { BCRYPT_COST, validatePassword } from './passwordPolicy.js';
 import { DEFAULT_SCHOOL_PROFILE } from '../data/schoolProfile.js';
 import { CEMINACE_LEVELS } from '../data/ceminaceDefaults.js';
 import { SchoolProfile } from '../types.js';
@@ -72,6 +73,7 @@ export interface DbStudent {
   statut: boolean;
   classId: string;
   className: string;
+  academicYearId: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -86,10 +88,10 @@ export interface DbGrade {
   teacherId?: string;
   academicYearId: string;
   term: '1er Trimestre' | '2ème Trimestre' | '3ème Trimestre';
-  evaluations: number;
-  dev1: number;
-  dev2: number;
-  composition: number;
+  evaluations: number | null;
+  dev1: number | null;
+  dev2: number | null;
+  composition: number | null;
   observation?: string;
   createdAt: string;
   updatedAt: string;
@@ -97,10 +99,10 @@ export interface DbGrade {
 
 export interface DbAcademicYear {
   id: string;
-  name: string;
+  label: string;
   startDate: string;
   endDate: string;
-  active: boolean;
+  status: 'draft' | 'active' | 'closed';
   createdAt: string;
 }
 
@@ -148,7 +150,8 @@ const DB_FILE = path.resolve(process.cwd(), process.env.DATABASE_FILE || path.jo
 const DATA_DIR = path.dirname(DB_FILE);
 
 class DatabaseEngine {
-  private data: SchoolDatabase;
+  private data!: SchoolDatabase;
+  public readonly ready: Promise<void>;
 
   private addDefaultSubjectsForMissingLevels(subjects: DbSubject[], createdAt: string): DbSubject[] {
     const levelCodes: Record<DbClass['niveau'], string> = {
@@ -177,7 +180,9 @@ class DatabaseEngine {
 
   constructor() {
     this.ensureDataDir();
-    this.data = this.loadOrInit();
+    this.ready = this.loadOrInit().then(data => {
+      this.data = data;
+    });
   }
 
   private ensureDataDir() {
@@ -186,7 +191,7 @@ class DatabaseEngine {
     }
   }
 
-  private loadOrInit(): SchoolDatabase {
+  private async loadOrInit(): Promise<SchoolDatabase> {
     if (fs.existsSync(DB_FILE)) {
       let parsed: any;
       try {
@@ -205,6 +210,7 @@ class DatabaseEngine {
           parsed.version = 1;
           migrated = true;
         }
+        const requiresAcademicYearMigration = parsed.version < 3;
         if (parsed.version < 2) {
           parsed.subjects = this.addDefaultSubjectsForMissingLevels(
             parsed.subjects,
@@ -259,11 +265,57 @@ class DatabaseEngine {
           parsed.establishmentCity = parsed.schoolProfile.city;
           migrated = true;
         }
-        if (migrated) this.saveData(parsed);
+        if (parsed.version < 3) {
+          const now = new Date().toISOString();
+          const legacyYearId = crypto.randomUUID();
+          parsed.academicYears = [
+            {
+              id: legacyYearId,
+              label: '2025-2026',
+              startDate: '2025-10-01',
+              endDate: '2026-07-15',
+              status: 'closed',
+              createdAt: now,
+            },
+            {
+              id: crypto.randomUUID(),
+              label: '2026-2027',
+              startDate: '2026-10-01',
+              endDate: '2027-07-15',
+              status: 'active',
+              createdAt: now,
+            },
+          ] satisfies DbAcademicYear[];
+          parsed.classes = parsed.classes.map((schoolClass: DbClass) => ({
+            ...schoolClass,
+            academicYearId: legacyYearId,
+          }));
+          parsed.students = parsed.students.map((student: DbStudent) => ({
+            ...student,
+            academicYearId: legacyYearId,
+          }));
+          parsed.grades = parsed.grades.map((grade: DbGrade) => ({
+            ...grade,
+            academicYearId: legacyYearId,
+            evaluations: grade.evaluations ?? null,
+            dev1: grade.dev1 ?? null,
+            dev2: grade.dev2 ?? null,
+            composition: grade.composition ?? null,
+          }));
+          parsed.version = 3;
+          migrated = true;
+        }
+        if (migrated) {
+          if (requiresAcademicYearMigration) {
+            const migrationBackup = `${DB_FILE}.pre-academic-years-${crypto.randomUUID()}.bak`;
+            fs.copyFileSync(DB_FILE, migrationBackup);
+          }
+          this.saveData(parsed);
+        }
         return parsed;
       }
     }
-    const seeded = this.generateSeedData();
+    const seeded = await this.generateSeedData();
     this.saveData(seeded);
     return seeded;
   }
@@ -285,12 +337,23 @@ class DatabaseEngine {
   }
 
   public getData(): SchoolDatabase {
+    if (!this.data) throw new Error('La base de données n’est pas encore initialisée.');
     return this.data;
+  }
+
+  public createPreRestoreBackup(): string {
+    const backupPath = `${DB_FILE}.pre-restore-${crypto.randomUUID()}.json`;
+    fs.writeFileSync(backupPath, JSON.stringify(this.getData(), null, 2), {
+      encoding: 'utf-8',
+      flag: 'wx',
+      mode: 0o600,
+    });
+    return backupPath;
   }
 
   public logAudit(action: string, details?: string, userId?: string, userEmail?: string, ipAddress?: string) {
     const entry: DbAuditLog = {
-      id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      id: crypto.randomUUID(),
       userId,
       userEmail,
       action,
@@ -305,7 +368,7 @@ class DatabaseEngine {
     this.persist();
   }
 
-  private generateSeedData(): SchoolDatabase {
+  private async generateSeedData(): Promise<SchoolDatabase> {
     const now = new Date().toISOString();
     const seedDemoData = process.env.SEED_DEMO_DATA === 'true';
     const adminPassword = process.env.SEED_ADMIN_PASSWORD || crypto.randomBytes(24).toString('base64url');
@@ -318,8 +381,13 @@ class DatabaseEngine {
       console.warn(`[MonPilot] Compte admin: ${adminPassword}`);
       if (seedDemoData) console.warn(`[MonPilot] Compte enseignant: ${teacherPassword}`);
     }
-    const adminHash = bcrypt.hashSync(adminPassword, 12);
-    const teacherHash = bcrypt.hashSync(teacherPassword, 12);
+    const adminPasswordError = validatePassword(adminPassword);
+    const teacherPasswordError = seedDemoData ? validatePassword(teacherPassword) : null;
+    if (adminPasswordError || teacherPasswordError) {
+      throw new Error(adminPasswordError || teacherPasswordError || 'Mot de passe seed invalide.');
+    }
+    const adminHash = await bcrypt.hash(adminPassword, BCRYPT_COST);
+    const teacherHash = await bcrypt.hash(teacherPassword, BCRYPT_COST);
 
     const users: DbUser[] = [
       {
@@ -387,31 +455,41 @@ class DatabaseEngine {
     if (!seedDemoData) teachers.length = 0;
     if (!seedDemoData) users.splice(1);
 
+    const closedYearId = crypto.randomUUID();
+    const academicYearId = crypto.randomUUID();
     const academicYears: DbAcademicYear[] = [
       {
-        id: 'ay-2025-2026',
-        name: '2025-2026',
+        id: closedYearId,
+        label: '2025-2026',
         startDate: '2025-10-01',
         endDate: '2026-07-15',
-        active: true,
-        createdAt: now
+        status: 'closed',
+        createdAt: now,
+      },
+      {
+        id: academicYearId,
+        label: '2026-2027',
+        startDate: '2026-10-01',
+        endDate: '2027-07-15',
+        status: 'active',
+        createdAt: now,
       }
     ];
 
     const classes: DbClass[] = [
       // Primaire
-      { id: 'cls-cp1', nom: 'CP1', niveau: 'Primaire', capacite: 35, statut: true, academicYearId: 'ay-2025-2026', createdAt: now },
-      { id: 'cls-cm2', nom: 'CM2', niveau: 'Primaire', capacite: 40, statut: true, academicYearId: 'ay-2025-2026', createdAt: now },
+      { id: 'cls-cp1', nom: 'CP1', niveau: 'Primaire', capacite: 35, statut: true, academicYearId: closedYearId, createdAt: now },
+      { id: 'cls-cm2', nom: 'CM2', niveau: 'Primaire', capacite: 40, statut: true, academicYearId: closedYearId, createdAt: now },
       // Collège
-      { id: 'cls-6a', nom: '6ème A', niveau: 'Collège', section: 'Générale', capacite: 45, statut: true, academicYearId: 'ay-2025-2026', headTeacherId: 'tch-01', createdAt: now },
-      { id: 'cls-5a', nom: '5ème A', niveau: 'Collège', section: 'Générale', capacite: 45, statut: true, academicYearId: 'ay-2025-2026', createdAt: now },
-      { id: 'cls-4a', nom: '4ème A', niveau: 'Collège', section: 'Générale', capacite: 45, statut: true, academicYearId: 'ay-2025-2026', createdAt: now },
-      { id: 'cls-3a', nom: '3ème A', niveau: 'Collège', section: 'Générale', capacite: 45, statut: true, academicYearId: 'ay-2025-2026', createdAt: now },
+      { id: 'cls-6a', nom: '6ème A', niveau: 'Collège', section: 'Générale', capacite: 45, statut: true, academicYearId: closedYearId, headTeacherId: 'tch-01', createdAt: now },
+      { id: 'cls-5a', nom: '5ème A', niveau: 'Collège', section: 'Générale', capacite: 45, statut: true, academicYearId: closedYearId, createdAt: now },
+      { id: 'cls-4a', nom: '4ème A', niveau: 'Collège', section: 'Générale', capacite: 45, statut: true, academicYearId: closedYearId, createdAt: now },
+      { id: 'cls-3a', nom: '3ème A', niveau: 'Collège', section: 'Générale', capacite: 45, statut: true, academicYearId: closedYearId, createdAt: now },
       // Lycée
-      { id: 'cls-2nde-c', nom: '2nde C', niveau: 'Lycée', section: 'Scientifique', capacite: 40, statut: true, academicYearId: 'ay-2025-2026', createdAt: now },
-      { id: 'cls-term-c', nom: 'Terminale C', niveau: 'Lycée', section: 'Mathématiques & Physique', capacite: 35, statut: true, academicYearId: 'ay-2025-2026', createdAt: now },
-      { id: 'cls-term-d', nom: 'Terminale D', niveau: 'Lycée', section: 'Sciences Naturelles & Biologie', capacite: 40, statut: true, academicYearId: 'ay-2025-2026', createdAt: now },
-      { id: 'cls-term-a', nom: 'Terminale A', niveau: 'Lycée', section: 'Lettres & Philosophie', capacite: 45, statut: true, academicYearId: 'ay-2025-2026', headTeacherId: 'tch-02', createdAt: now }
+      { id: 'cls-2nde-c', nom: '2nde C', niveau: 'Lycée', section: 'Scientifique', capacite: 40, statut: true, academicYearId: closedYearId, createdAt: now },
+      { id: 'cls-term-c', nom: 'Terminale C', niveau: 'Lycée', section: 'Mathématiques & Physique', capacite: 35, statut: true, academicYearId: closedYearId, createdAt: now },
+      { id: 'cls-term-d', nom: 'Terminale D', niveau: 'Lycée', section: 'Sciences Naturelles & Biologie', capacite: 40, statut: true, academicYearId: closedYearId, createdAt: now },
+      { id: 'cls-term-a', nom: 'Terminale A', niveau: 'Lycée', section: 'Lettres & Philosophie', capacite: 45, statut: true, academicYearId: closedYearId, headTeacherId: 'tch-02', createdAt: now }
     ];
     if (!seedDemoData) classes.forEach((schoolClass) => { delete schoolClass.headTeacherId; });
 
@@ -426,42 +504,49 @@ class DatabaseEngine {
     ];
     const allLevelSubjects = this.addDefaultSubjectsForMissingLevels(subjects, now);
 
-    const students: DbStudent[] = seedDemoData ? [
-      { id: 'CEM-001', matricule: 'CEM-001', nom: 'MOUKOKO', prenom: 'Grace', sexe: 'F', dateNaissance: '12/04/2010', lieuNaissance: 'Brazzaville', parentPhone: '+242 06 654 32 10', classId: 'cls-6a', className: '6ème A', statut: true, createdAt: now, updatedAt: now },
-      { id: 'CEM-002', matricule: 'CEM-002', nom: 'NGOMA', prenom: 'Christian', sexe: 'M', dateNaissance: '25/08/2009', lieuNaissance: 'Pointe-Noire', parentPhone: '+242 05 512 88 44', classId: 'cls-6a', className: '6ème A', statut: true, createdAt: now, updatedAt: now },
-      { id: 'CEM-003', matricule: 'CEM-003', nom: 'MAKOSSO', prenom: 'Aurelie', sexe: 'F', dateNaissance: '03/11/2010', lieuNaissance: 'Brazzaville', parentPhone: '+242 06 901 22 77', classId: 'cls-6a', className: '6ème A', statut: true, createdAt: now, updatedAt: now },
-      { id: 'CEM-004', matricule: 'CEM-004', nom: 'SAMBA', prenom: 'Kevin', sexe: 'M', dateNaissance: '17/01/2009', lieuNaissance: 'Dolisie', parentPhone: '+242 04 433 19 80', classId: 'cls-6a', className: '6ème A', statut: true, createdAt: now, updatedAt: now },
-      { id: 'CEM-005', matricule: 'CEM-005', nom: 'LOUBAKI', prenom: 'Priscille', sexe: 'F', dateNaissance: '09/06/2010', lieuNaissance: 'Brazzaville', parentPhone: '+242 06 720 11 05', classId: 'cls-6a', className: '6ème A', statut: true, createdAt: now, updatedAt: now },
-      { id: 'CEM-006', matricule: 'CEM-006', nom: 'MPASSI', prenom: 'Arnaud', sexe: 'M', dateNaissance: '22/12/2009', lieuNaissance: 'Kinkala', parentPhone: '+242 05 609 45 33', classId: 'cls-6a', className: '6ème A', statut: true, createdAt: now, updatedAt: now }
-    ] : [];
+    const sampleStudents: Omit<DbStudent, 'id' | 'matricule'>[] = [
+      { nom: 'MOUKOKO', prenom: 'Grace', sexe: 'F', dateNaissance: '12/04/2010', lieuNaissance: 'Brazzaville', parentPhone: '+242 06 654 32 10', classId: 'cls-6a', className: '6ème A', academicYearId: closedYearId, statut: true, createdAt: now, updatedAt: now },
+      { nom: 'NGOMA', prenom: 'Christian', sexe: 'M', dateNaissance: '25/08/2009', lieuNaissance: 'Pointe-Noire', parentPhone: '+242 05 512 88 44', classId: 'cls-6a', className: '6ème A', academicYearId: closedYearId, statut: true, createdAt: now, updatedAt: now },
+      { nom: 'MAKOSSO', prenom: 'Aurelie', sexe: 'F', dateNaissance: '03/11/2010', lieuNaissance: 'Brazzaville', parentPhone: '+242 06 901 22 77', classId: 'cls-6a', className: '6ème A', academicYearId: closedYearId, statut: true, createdAt: now, updatedAt: now },
+      { nom: 'SAMBA', prenom: 'Kevin', sexe: 'M', dateNaissance: '17/01/2009', lieuNaissance: 'Dolisie', parentPhone: '+242 04 433 19 80', classId: 'cls-6a', className: '6ème A', academicYearId: closedYearId, statut: true, createdAt: now, updatedAt: now },
+      { nom: 'LOUBAKI', prenom: 'Priscille', sexe: 'F', dateNaissance: '09/06/2010', lieuNaissance: 'Brazzaville', parentPhone: '+242 06 720 11 05', classId: 'cls-6a', className: '6ème A', academicYearId: closedYearId, statut: true, createdAt: now, updatedAt: now },
+      { nom: 'MPASSI', prenom: 'Arnaud', sexe: 'M', dateNaissance: '22/12/2009', lieuNaissance: 'Kinkala', parentPhone: '+242 05 609 45 33', classId: 'cls-6a', className: '6ème A', academicYearId: closedYearId, statut: true, createdAt: now, updatedAt: now },
+    ];
+    const students: DbStudent[] = seedDemoData
+      ? sampleStudents.map((student, index) => ({
+          ...student,
+          id: crypto.randomUUID(),
+          matricule: `${DEFAULT_SCHOOL_PROFILE.matriculePrefix}-${String(index + 1).padStart(3, '0')}`,
+        }))
+      : [];
 
     const grades: DbGrade[] = [];
-    const sampleGradesMatrix: Record<string, { eval: number; dev1: number; dev2: number; comp: number }> = {
-      'CEM-001': { eval: 15.5, dev1: 14.0, dev2: 16.0, comp: 16.5 },
-      'CEM-002': { eval: 12.0, dev1: 11.5, dev2: 13.0, comp: 12.5 },
-      'CEM-003': { eval: 14.0, dev1: 13.5, dev2: 14.5, comp: 15.0 },
-      'CEM-004': { eval: 10.0, dev1: 9.5, dev2: 11.0, comp: 10.5 },
-      'CEM-005': { eval: 16.0, dev1: 15.5, dev2: 17.0, comp: 17.5 },
-      'CEM-006': { eval: 8.5, dev1: 9.0, dev2: 8.0, comp: 9.5 }
-    };
+    const sampleGradesMatrix = [
+      { eval: 15.5, dev1: 14.0, dev2: 16.0, comp: 16.5 },
+      { eval: 12.0, dev1: 11.5, dev2: 13.0, comp: 12.5 },
+      { eval: 14.0, dev1: 13.5, dev2: 14.5, comp: 15.0 },
+      { eval: 10.0, dev1: 9.5, dev2: 11.0, comp: 10.5 },
+      { eval: 16.0, dev1: 15.5, dev2: 17.0, comp: 17.5 },
+      { eval: 8.5, dev1: 9.0, dev2: 8.0, comp: 9.5 },
+    ];
 
-    for (const student of students) {
+    for (const [studentIndex, student] of students.entries()) {
       for (const subject of subjects) {
-        const base = sampleGradesMatrix[student.id] || { eval: 12, dev1: 12, dev2: 12, comp: 12 };
-        const factor = subject.specialty === 'Sciences' ? (student.id === 'CEM-005' ? 1.05 : 0.98) : 1.0;
+        const base = sampleGradesMatrix[studentIndex] || { eval: 12, dev1: 12, dev2: 12, comp: 12 };
+        const factor = subject.specialty === 'Sciences' ? (studentIndex === 4 ? 1.05 : 0.98) : 1.0;
         const ev = Math.min(20, Math.max(0, Math.round(base.eval * factor * 10) / 10));
         const d1 = Math.min(20, Math.max(0, Math.round(base.dev1 * factor * 10) / 10));
         const d2 = Math.min(20, Math.max(0, Math.round(base.dev2 * factor * 10) / 10));
         const cp = Math.min(20, Math.max(0, Math.round(base.comp * factor * 10) / 10));
 
         grades.push({
-          id: `grd-${student.id}-${subject.id}-t1`,
+          id: crypto.randomUUID(),
           studentId: student.id,
           subjectId: subject.id,
           subjectName: subject.nom,
           classId: student.classId,
           className: student.className,
-          academicYearId: 'ay-2025-2026',
+          academicYearId: closedYearId,
           term: '1er Trimestre',
           evaluations: ev,
           dev1: d1,
@@ -483,7 +568,7 @@ class DatabaseEngine {
     ];
 
     return {
-      version: 2,
+      version: 3,
       schoolId: crypto.randomUUID(),
       establishmentName: DEFAULT_SCHOOL_PROFILE.schoolName,
       establishmentCity: DEFAULT_SCHOOL_PROFILE.city,
