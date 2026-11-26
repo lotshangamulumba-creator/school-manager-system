@@ -3,6 +3,7 @@ import express from 'express';
 import path from 'path';
 import cors from 'cors';
 import helmet from 'helmet';
+import { getHelmetOptions } from './src/server/securityHeaders.js';
 
 function getAllowedOrigins(port: number): Set<string> {
   const configuredOrigins = process.env.ALLOWED_ORIGINS;
@@ -28,23 +29,7 @@ export async function startServer() {
   const allowedOrigins = getAllowedOrigins(port);
   const app = express();
 
-  app.use(helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        imgSrc: ["'self'", 'data:', 'blob:'],
-        connectSrc: ["'self'", 'ws:', 'wss:'],
-        fontSrc: ["'self'", 'data:'],
-        objectSrc: ["'none'"],
-        baseUri: ["'self'"],
-        frameAncestors: ["'self'"],
-        formAction: ["'self'"],
-      },
-    },
-    hsts: isProduction ? { maxAge: 31_536_000, includeSubDomains: true } : false,
-  }));
+  app.use(helmet(getHelmetOptions(isProduction)));
   app.use((req, res, next) => {
     const origin = req.get('Origin');
     if (origin && !allowedOrigins.has(origin)) {
